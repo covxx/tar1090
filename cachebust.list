@@ -8,5 +8,7 @@ layers.js
 markers.js
 planeObject.js
 script.js
+analytics.js
 registrations.js
 style.css
+analytics.css
