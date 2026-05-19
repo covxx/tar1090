@@ -1,5 +1,7 @@
 """Analytics REST API for tar1090."""
 import os
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -29,6 +31,10 @@ PLANESPOTTERS_URL = os.environ.get(
     "https://api.planespotters.net/pub/photos/hex/",
 )
 PHOTO_CACHE_DIR = os.environ.get("PHOTO_CACHE_DIR", "/cache/photos")
+API_CACHE_TTL = int(os.environ.get("API_CACHE_TTL", "20"))
+
+_CACHE_LOCK = threading.Lock()
+_CACHE: dict[tuple, tuple[float, dict]] = {}
 
 app = FastAPI(title="tar1090 Analytics API", version="1.0.0")
 app.add_middleware(
@@ -55,19 +61,80 @@ def get_conn():
     return pg8000.native.Connection(**_parse_dsn(DATABASE_URL))
 
 
+def _cache_get(cache_key: tuple):
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        hit = _CACHE.get(cache_key)
+        if not hit:
+            return None
+        expires_at, payload = hit
+        if expires_at < now:
+            _CACHE.pop(cache_key, None)
+            return None
+        return payload
+
+
+def _cache_set(cache_key: tuple, payload: dict):
+    with _CACHE_LOCK:
+        _CACHE[cache_key] = (time.monotonic() + API_CACHE_TTL, payload)
+
+
+def _latest_table_time(conn, table: str):
+    rows = conn.run(f"SELECT MAX(time), COUNT(*) FROM {table}")
+    if not rows:
+        return None, 0
+    return rows[0][0], int(rows[0][1] or 0)
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
+@app.get("/health/details")
+def health_details():
+    now = datetime.now(timezone.utc)
+    info = {"status": "ok", "time": now.isoformat()}
+    conn = None
+    try:
+        conn = get_conn()
+        conn.run("SELECT 1")
+        last_pos, count_pos = _latest_table_time(conn, "positions")
+        last_mil, count_mil = _latest_table_time(conn, "military_sightings")
+        info["db"] = {"ok": True}
+        info["positions"] = {
+            "count": count_pos,
+            "last_time": last_pos.isoformat() if isinstance(last_pos, datetime) else None,
+            "lag_seconds": round((now - last_pos).total_seconds(), 1) if isinstance(last_pos, datetime) else None,
+        }
+        info["military"] = {
+            "count": count_mil,
+            "last_time": last_mil.isoformat() if isinstance(last_mil, datetime) else None,
+            "lag_seconds": round((now - last_mil).total_seconds(), 1) if isinstance(last_mil, datetime) else None,
+        }
+    except Exception as exc:
+        info["status"] = "degraded"
+        info["db"] = {"ok": False, "error": str(exc)}
+    finally:
+        if conn:
+            conn.close()
+    return info
+
+
 @app.get("/stats/overview")
 def stats_overview(period: str = Query("day")):
+    cache_key = ("overview", period)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
     since = period_start(period)
     conn = get_conn()
     try:
-        return overview_stats(conn, since)
+        data = overview_stats(conn, since)
     finally:
         conn.close()
+    _cache_set(cache_key, data)
+    return data
 
 
 @app.get("/stats/leaderboard")
@@ -76,12 +143,18 @@ def stats_leaderboard(
     period: str = Query("day"),
     limit: int = Query(20, ge=1, le=100),
 ):
+    cache_key = ("leaderboard", category, period, limit)
+    cached_payload = _cache_get(cache_key)
+    if cached_payload is not None:
+        return cached_payload
     since = period_start(period)
     conn = get_conn()
     try:
-        cached = leaderboard_from_records(conn, period, category, limit)
-        if cached:
-            return {"period": period, "category": category, "items": cached}
+        cached_items = leaderboard_from_records(conn, period, category, limit)
+        if cached_items:
+            payload = {"period": period, "category": category, "items": cached_items}
+            _cache_set(cache_key, payload)
+            return payload
 
         if category == "highest_alt":
             items = leaderboard_highest_alt(conn, since, limit)
@@ -110,17 +183,25 @@ def stats_leaderboard(
     finally:
         conn.close()
 
-    return {"period": period, "category": category, "items": items}
+    payload = {"period": period, "category": category, "items": items}
+    _cache_set(cache_key, payload)
+    return payload
 
 
 @app.get("/stats/paths/top")
 def stats_paths_top(period: str = Query("week"), limit: int = Query(50, ge=1, le=200)):
+    cache_key = ("paths_top", period, limit)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
     since = period_start(period)
     conn = get_conn()
     try:
-        return top_paths(conn, since, limit)
+        data = top_paths(conn, since, limit)
     finally:
         conn.close()
+    _cache_set(cache_key, data)
+    return data
 
 
 @app.get("/stats/military")

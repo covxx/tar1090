@@ -1219,6 +1219,9 @@ function earlyInitPage() {
                 if (typeof clearAnalyticsMapLayers === 'function') {
                     clearAnalyticsMapLayers();
                 }
+                if (ui.oldPanel && ui.oldPanel.attr('id') === 'tab-analytics' && typeof syncAnalyticsUrlState === 'function') {
+                    syncAnalyticsUrlState({ open: false });
+                }
             }
         },
         collapsible: true

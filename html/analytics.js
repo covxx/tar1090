@@ -1,9 +1,71 @@
 "use strict";
 
 let analyticsPeriod = "day";
+let analyticsCategory = "highest_alt";
 let analyticsInitialized = false;
 let analyticsPathLayer = null;
 let analyticsHistoryLayer = null;
+
+function getAnalyticsSearchParams() {
+    return new URLSearchParams(window.location.search);
+}
+
+function syncAnalyticsUrlState(options) {
+    const params = getAnalyticsSearchParams();
+    const open = options && options.open;
+
+    if (open) {
+        params.set("analytics", "1");
+        params.set("aperiod", analyticsPeriod);
+        params.set("acategory", analyticsCategory);
+        const histInput = document.getElementById("hist_icao");
+        if (histInput && histInput.value && histInput.value.trim().length === 6) {
+            params.set("aicao", histInput.value.trim().toLowerCase());
+        } else {
+            params.delete("aicao");
+        }
+    } else if (options && options.open === false) {
+        params.delete("analytics");
+        params.delete("aperiod");
+        params.delete("acategory");
+        params.delete("aicao");
+    }
+
+    const query = params.toString();
+    const next = window.location.pathname + (query ? "?" + query : "");
+    window.history.replaceState({}, "", next);
+}
+
+function applyAnalyticsUrlState(root) {
+    const params = getAnalyticsSearchParams();
+    const period = params.get("aperiod");
+    if (period && ["day", "week", "month"].indexOf(period) >= 0) {
+        analyticsPeriod = period;
+    }
+    const category = params.get("acategory");
+    if (category && ["highest_alt", "fastest_gs", "largest", "smallest"].indexOf(category) >= 0) {
+        analyticsCategory = category;
+    }
+
+    const periodBtn = root.querySelector("[data-period='" + analyticsPeriod + "']");
+    if (periodBtn) {
+        root.querySelectorAll("[data-period]").forEach((b) => b.classList.remove("active"));
+        periodBtn.classList.add("active");
+    }
+    const categoryBtn = root.querySelector("[data-category='" + analyticsCategory + "']");
+    if (categoryBtn) {
+        root.querySelectorAll("[data-category]").forEach((b) => b.classList.remove("active"));
+        categoryBtn.classList.add("active");
+    }
+
+    const hist = params.get("aicao");
+    if (hist && hist.length === 6) {
+        const input = document.getElementById("hist_icao");
+        if (input) {
+            input.value = hist.toLowerCase();
+        }
+    }
+}
 
 function analyticsApiBase() {
     if (typeof getAnalyticsApiBase === "function") {
@@ -271,6 +333,7 @@ function setupAnalyticsTabs() {
             root.querySelectorAll("[data-period]").forEach((b) => b.classList.remove("active"));
             btn.classList.add("active");
             analyticsPeriod = btn.dataset.period;
+            syncAnalyticsUrlState({ open: true });
             refreshAnalyticsDashboard();
         });
     });
@@ -278,6 +341,8 @@ function setupAnalyticsTabs() {
         btn.addEventListener("click", () => {
             root.querySelectorAll("[data-category]").forEach((b) => b.classList.remove("active"));
             btn.classList.add("active");
+            analyticsCategory = btn.dataset.category;
+            syncAnalyticsUrlState({ open: true });
             loadAnalyticsLeaderboard(btn.dataset.category);
         });
     });
@@ -287,15 +352,16 @@ function setupAnalyticsTabs() {
     });
     const histBtn = document.getElementById("hist_load");
     if (histBtn) {
-        histBtn.addEventListener("click", loadAnalyticsHistory);
+        histBtn.addEventListener("click", function () {
+            syncAnalyticsUrlState({ open: true });
+            loadAnalyticsHistory();
+        });
     }
 }
 
 function refreshAnalyticsDashboard() {
     loadAnalyticsOverview();
-    const root = document.getElementById("tab-analytics");
-    const active = root ? root.querySelector("[data-category].active") : null;
-    loadAnalyticsLeaderboard(active ? active.dataset.category : "highest_alt");
+    loadAnalyticsLeaderboard(analyticsCategory);
     loadAnalyticsMilitary();
     loadAnalyticsPaths();
 }
@@ -304,6 +370,8 @@ function initAnalyticsUI() {
     if (analyticsInitialized || !document.getElementById("tab-analytics") || !analyticsApiBase()) {
         return;
     }
+    const root = document.getElementById("tab-analytics");
+    applyAnalyticsUrlState(root);
     analyticsInitialized = true;
     setupAnalyticsTabs();
     refreshAnalyticsDashboard();
@@ -323,6 +391,7 @@ function openAnalyticsTab() {
     }
     jQuery('#tabs').tabs('option', 'active', $link.parent().index());
     initAnalyticsUI();
+    syncAnalyticsUrlState({ open: true });
     buttonActive('#A', true);
 }
 
@@ -340,6 +409,7 @@ function toggleAnalytics() {
         jQuery('#tabs').tabs('option', 'active', 0);
         buttonActive('#A', false);
         clearAnalyticsMapLayers();
+        syncAnalyticsUrlState({ open: false });
         return;
     }
     openAnalyticsTab();
