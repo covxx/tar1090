@@ -234,8 +234,9 @@ fi
 
 
 # copy over base files
-cp install.sh uninstall.sh getupintheair.sh LICENSE README.md "$ipath"
-cp README-ANALYTICS.md docker-compose.yml nginx-analytics.conf .env.example "$ipath" 2>/dev/null || true
+cp install.sh install-analytics.sh uninstall.sh getupintheair.sh LICENSE README.md "$ipath"
+cp tar1090-analytics-*.service README-ANALYTICS.md docker-compose.yml nginx-analytics.conf .env.example "$ipath" 2>/dev/null || true
+chmod +x "$ipath/install-analytics.sh" 2>/dev/null || true
 cp default "$ipath/example_config_dont_edit"
 cp html/config.js "$ipath/example_config.js"
 rm -f "$ipath/default"
@@ -346,7 +347,7 @@ do
 
 // --- analytics fork (added by install.sh) ---
 analyticsEnabled = true;
-analyticsApiUrl = "http://127.0.0.1:8080";
+analyticsApiUrl = "";
 showPictures = true;
 planespottersAPI = true;
 showSil = true;
@@ -522,9 +523,14 @@ else
     echo "All done! You'll need to configure your webserver yourself, see ${ipath}/nginx-tar1090.conf for a reference nginx configuration"
 fi
 
-if [[ -f "$gpath/git/README-ANALYTICS.md" ]] || [[ -f "$gpath/git/docker-compose.yml" ]]; then
-    echo
-    echo "Analytics stack (optional): see ${ipath}/README-ANALYTICS.md or run 'docker compose up -d' from the git checkout."
-    echo "  Dashboard: http://$(ip route get 1.2.3.4 2>/dev/null | grep -m1 -o -P 'src \K[0-9,.]*' || echo 'YOUR_IP'):8505/tar1090/analytics.html"
+ENABLE_ANALYTICS="${ENABLE_ANALYTICS:-yes}"
+if [[ -f /etc/default/tar1090 ]]; then
+    # shellcheck disable=SC1091
+    source /etc/default/tar1090 2>/dev/null || true
+fi
+if [[ "${ENABLE_ANALYTICS}" == "yes" ]] && [[ -f "$gpath/git/install-analytics.sh" ]]; then
+    bash "$gpath/git/install-analytics.sh" "$ipath" "$srcdir" "$gpath/git" || echo "WARNING: native analytics install failed (map still works)"
+elif [[ "${ENABLE_ANALYTICS}" == "yes" ]]; then
+    echo "Analytics: install-analytics.sh not found, skipping."
 fi
 

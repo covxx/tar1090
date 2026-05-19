@@ -165,12 +165,16 @@ def refresh_records(period: str, days: int) -> int:
 
 
 def run_retention() -> None:
-    """path_cells: keep 12 months via manual delete (no hypertable retention on non-ts in older versions)."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=365)
+    """Retention for plain PostgreSQL (no TimescaleDB policies)."""
+    cutoff_paths = datetime.now(timezone.utc) - timedelta(days=365)
+    cutoff_positions = datetime.now(timezone.utc) - timedelta(days=90)
+    cutoff_military = datetime.now(timezone.utc) - timedelta(days=365)
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM path_cells WHERE hour < %s", (cutoff,))
-            cur.execute("DELETE FROM records WHERE updated_at < %s", (cutoff,))
+            cur.execute("DELETE FROM positions WHERE time < %s", (cutoff_positions,))
+            cur.execute("DELETE FROM military_sightings WHERE time < %s", (cutoff_military,))
+            cur.execute("DELETE FROM path_cells WHERE hour < %s", (cutoff_paths,))
+            cur.execute("DELETE FROM records WHERE updated_at < %s", (cutoff_paths,))
         conn.commit()
 
 

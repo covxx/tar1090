@@ -1,86 +1,77 @@
-# ADS-B Analytics Stack
+# ADS-B Analytics
 
-This fork adds a Docker-based analytics warehouse alongside the standard tar1090 map.
+Analytics runs **automatically with `install.sh`** on Ubuntu/Debian — no Docker required.
 
-## Components
+## What install.sh sets up
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| tar1090 (host) | 8504 | Live map (existing install) |
-| nginx (Docker) | 8505 | Analytics dashboard + static files |
-| api (Docker) | 8080 | REST API |
-| timescaledb | internal | Position history (90 days raw) |
-| ingest | internal | Reads `aircraft.json` from readsb |
-| jobs | internal | Hourly path/leaderboard aggregation |
+| Component | How |
+|-----------|-----|
+| Database | PostgreSQL (`tar1090` database) |
+| Ingest | `tar1090-analytics-ingest.service` — reads `aircraft.json` |
+| API | `tar1090-analytics-api.service` — port **8080** |
+| Jobs | `tar1090-analytics-jobs.service` — hourly leaderboards / paths |
+| UI | `analytics.html` served with the map (button **A**) |
 
-## Quick start
-
-1. Ensure readsb is running and writing `/run/readsb/aircraft.json`.
-2. Install tar1090-db (via `install.sh`) so `/usr/local/share/tar1090/html/db2` exists.
-3. Copy `.env.example` to `.env` and adjust paths if needed.
-4. Start the stack (from the repo checkout, or `/usr/local/share/tar1090` after install):
-
-```bash
-cd /path/to/tar1090   # or /usr/local/share/tar1090 if copied by install.sh
-docker compose up -d --build
-```
-
-**Ubuntu install (map + files):**
+## Install (one command)
 
 ```bash
 sudo bash -c "$(wget -nv -O - https://github.com/covxx/tar1090/raw/master/install.sh)"
 ```
 
-5. Open:
-   - **Analytics dashboard:** http://localhost:8505/tar1090/analytics.html
-   - **API:** http://localhost:8080/health
-   - **Live map:** your existing tar1090 URL (port 8504)
+Disable analytics:
+
+```bash
+# In /etc/default/tar1090 before install, or:
+export ENABLE_ANALYTICS=no
+sudo bash -c "$(wget -nv -O - https://github.com/covxx/tar1090/raw/master/install.sh)"
+```
+
+## After install
+
+- **Live map:** `http://YOUR_IP:8504/tar1090/` (or your usual URL)
+- **Analytics page:** same host, path `/tar1090/analytics.html`, or click **A** on the map
+- **API health:** `http://YOUR_IP:8080/health`
+
+Hard-refresh the browser (Ctrl+Shift+R) if you still see the old UI.
+
+## Check services
+
+```bash
+systemctl status tar1090-analytics-api tar1090-analytics-ingest tar1090-analytics-jobs
+curl -s http://127.0.0.1:8080/health
+```
 
 ## Configuration
 
-Edit `html/config.js`:
+`/etc/default/tar1090-analytics`:
 
-```javascript
-analyticsApiUrl = "http://127.0.0.1:8080";
-analyticsEnabled = true;
-showSil = true;
-```
-
-When using the nginx bundle on port 8505, set `analyticsApiUrl = "/api"` if the map is served from the same host.
+- `AIRCRAFT_JSON` — path to readsb `aircraft.json`
+- `TAR1090_DB_PATH` — tar1090-db shards for aircraft metadata
+- `DATABASE_URL` — PostgreSQL connection
 
 ## API endpoints
 
 - `GET /stats/overview?period=day|week|month`
-- `GET /stats/leaderboard?category=highest_alt|fastest_gs|largest|smallest|military&period=day`
+- `GET /stats/leaderboard?category=highest_alt|fastest_gs|largest|smallest|military`
 - `GET /stats/paths/top?period=week`
 - `GET /stats/military`
 - `GET /history/{icao}?period=day`
-- `GET /photo/{icao}` — cached planespotters thumbnail redirect
+- `GET /photo/{icao}`
 
-## Map enhancements
+## Optional: Docker
 
-- **A** button — opens analytics dashboard
-- **U** button — military-only filter (existing, relabeled)
-- Sidebar shows today's highest altitude and military count when API is reachable
-- Aircraft photos: planespotters.net with silhouette fallback (`aircraft_sil/`)
-- Extended live trail history: `HISTORY_SIZE=4500` (~10 hours) in `default`
+Docker Compose is still in the repo for advanced setups or running analytics on a separate machine:
+
+```bash
+docker compose up -d --build
+```
+
+For a normal feeder on Ubuntu, **use `install.sh` only** — Docker is not required.
 
 ## Data retention
 
-- Raw positions: 90 days (TimescaleDB retention policy)
-- Military sightings: 365 days
-- Path cells and records: 12 months (nightly cleanup job)
+- Positions: 90 days
+- Military sightings: 12 months  
+- Path cells / records: 12 months  
 
-## Windows / development
-
-On Windows without readsb, mount a sample `aircraft.json`:
-
-```yaml
-# docker-compose.override.yml
-services:
-  ingest:
-    volumes:
-      - ./sample-data:/data:ro
-```
-
-Place a valid `aircraft.json` in `sample-data/`.
+Managed by the jobs service (plain PostgreSQL, no TimescaleDB required).

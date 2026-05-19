@@ -19,6 +19,9 @@ GZIP_LVL=1
 # hours of tracks that /?pTracks will show
 PTRACKS=8
 
+# Install analytics stack with install.sh (PostgreSQL + systemd, no Docker)
+ENABLE_ANALYTICS=yes
+
 
 
 # no need to change the lines below

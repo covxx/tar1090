@@ -3367,13 +3367,23 @@ function displayPhoto() {
     adjustInfoBlock();
 }
 
+function getAnalyticsApiBase() {
+    if (!analyticsEnabled) {
+        return '';
+    }
+    if (analyticsApiUrl) {
+        return analyticsApiUrl.replace(/\/$/, '');
+    }
+    return window.location.protocol + '//' + window.location.hostname + ':8080';
+}
+
 function displayPhotoFromAnalytics(selected) {
-    if (!analyticsEnabled || !analyticsApiUrl || selected.icao[0] == '~') {
+    if (!analyticsEnabled || !getAnalyticsApiBase() || selected.icao[0] == '~') {
         displaySil();
         return;
     }
     const icao = selected.icao.toUpperCase();
-    const imgUrl = analyticsApiUrl.replace(/\/$/, '') + '/photo/' + icao;
+    const imgUrl = getAnalyticsApiBase() + '/photo/' + icao;
     const html = '<img id="airplanePhoto" src="' + imgUrl + '" onerror="displaySil();"/>';
     setPhotoHtml(html);
     jQuery('#copyrightInfo').html('<span>Image via analytics cache</span>');
@@ -9169,10 +9179,10 @@ function globeRateUpdate() {
 globeRateUpdate();
 
 function refreshAnalyticsStats() {
-    if (!analyticsEnabled || !analyticsApiUrl) {
+    const base = getAnalyticsApiBase();
+    if (!base) {
         return;
     }
-    const base = analyticsApiUrl.replace(/\/$/, '');
     jQuery.getJSON(base + '/stats/overview?period=day')
         .done(function(data) {
             jQuery('#analytics_stats_row').show();
@@ -9189,7 +9199,7 @@ function refreshAnalyticsStats() {
 }
 
 function initAnalyticsPoll() {
-    if (!analyticsEnabled || !analyticsApiUrl) {
+    if (!getAnalyticsApiBase()) {
         return;
     }
     refreshAnalyticsStats();

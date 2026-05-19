@@ -1,0 +1,16 @@
+[Unit]
+Description=tar1090 analytics REST API
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+User=tar1090
+Group=tar1090
+WorkingDirectory=/usr/local/share/tar1090/analytics/api
+EnvironmentFile=/etc/default/tar1090-analytics
+ExecStart=/usr/local/share/tar1090/analytics-venv/bin/uvicorn main:app --host 127.0.0.1 --port 8080
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

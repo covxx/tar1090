@@ -1,8 +1,12 @@
 "use strict";
 
-const API_BASE = (typeof analyticsApiBase !== "undefined")
-    ? analyticsApiBase
-    : (window.location.port === "8505" ? "/api" : "http://127.0.0.1:8080");
+function getAnalyticsApiBase() {
+    if (typeof analyticsApiBase !== "undefined" && analyticsApiBase) {
+        return analyticsApiBase.replace(/\/$/, "");
+    }
+    return window.location.protocol + "//" + window.location.hostname + ":8080";
+}
+const API_BASE = getAnalyticsApiBase();
 
 let period = "day";
 let pathMap = null;
