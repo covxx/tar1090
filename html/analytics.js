@@ -1,72 +1,158 @@
 "use strict";
 
-function getAnalyticsApiBase() {
-    if (typeof analyticsApiBase !== "undefined" && analyticsApiBase) {
-        return analyticsApiBase.replace(/\/$/, "");
+let analyticsPeriod = "day";
+let analyticsInitialized = false;
+let analyticsPathLayer = null;
+let analyticsHistoryLayer = null;
+
+function analyticsApiBase() {
+    if (typeof getAnalyticsApiBase === "function") {
+        return getAnalyticsApiBase();
+    }
+    if (typeof analyticsApiUrl !== "undefined" && analyticsApiUrl) {
+        return analyticsApiUrl.replace(/\/$/, "");
     }
     return window.location.protocol + "//" + window.location.hostname + ":" + (typeof analyticsPort !== "undefined" ? analyticsPort : 9056);
 }
-const API_BASE = getAnalyticsApiBase();
 
-let period = "day";
-let pathMap = null;
-let historyMap = null;
-
-async function apiGet(path) {
-    const url = API_BASE.replace(/\/$/, "") + path;
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(await r.text());
+async function analyticsApiGet(path) {
+    const base = analyticsApiBase();
+    if (!base) {
+        throw new Error("Analytics API not configured");
+    }
+    const r = await fetch(base.replace(/\/$/, "") + path);
+    if (!r.ok) {
+        throw new Error(await r.text());
+    }
     return r.json();
 }
 
-function setStatus(msg) {
-    document.getElementById("status").textContent = msg;
-}
-
-function formatAlt(ft) {
-    if (ft == null) return "n/a";
-    return Math.round(ft).toLocaleString() + " ft";
-}
-
-function mapLink(icao) {
-    return "index.html?icao=" + icao.toUpperCase();
-}
-
-function photoUrl(icao) {
-    return API_BASE.replace(/\/$/, "") + "/photo/" + icao.toLowerCase();
-}
-
-async function loadOverview() {
-    try {
-        const d = await apiGet("/stats/overview?period=" + period);
-        document.getElementById("stat_seen").textContent = d.aircraft_seen ?? "—";
-        document.getElementById("stat_military").textContent = d.military_aircraft ?? "—";
-        document.getElementById("stat_highest").textContent = formatAlt(d.highest_alt);
-        setStatus("Updated " + new Date().toLocaleTimeString());
-    } catch (e) {
-        setStatus("API unavailable: " + e.message);
+function setAnalyticsStatus(msg) {
+    const el = document.getElementById("analytics_status");
+    if (el) {
+        el.textContent = msg;
     }
 }
 
-async function loadLeaderboard(category) {
-    const tbody = document.getElementById("leaderboard_body");
-    tbody.innerHTML = "<tr><td colspan='5'>Loading…</td></tr>";
+function formatAnalyticsAlt(ft) {
+    if (ft == null) {
+        return "n/a";
+    }
+    return Math.round(ft).toLocaleString() + " ft";
+}
+
+function analyticsPhotoUrl(icao) {
+    return analyticsApiBase().replace(/\/$/, "") + "/photo/" + icao.toLowerCase();
+}
+
+function selectPlaneFromAnalytics(icao) {
+    const hex = (icao || "").toLowerCase();
+    if (hex.length !== 6 || typeof selectPlaneByHex !== "function") {
+        return;
+    }
+    selectPlaneByHex(hex, { follow: true });
+}
+
+function ensureAnalyticsPathLayer() {
+    if (analyticsPathLayer || typeof OLMap === "undefined" || !OLMap) {
+        return;
+    }
+    analyticsPathLayer = new ol.layer.Vector({
+        source: new ol.source.Vector(),
+        zIndex: 175,
+        properties: { name: "analyticsPaths" },
+        style: function (feature) {
+            const cnt = feature.get("cnt") || 1;
+            const radius = Math.min(14, 4 + Math.log(cnt));
+            return new ol.style.Style({
+                image: new ol.style.Circle({
+                    radius: radius,
+                    fill: new ol.style.Fill({ color: "rgba(61, 154, 232, 0.45)" }),
+                    stroke: new ol.style.Stroke({ color: "#3d9ae8", width: 1 }),
+                }),
+            });
+        },
+    });
+    OLMap.addLayer(analyticsPathLayer);
+}
+
+function ensureAnalyticsHistoryLayer() {
+    if (analyticsHistoryLayer || typeof OLMap === "undefined" || !OLMap) {
+        return;
+    }
+    analyticsHistoryLayer = new ol.layer.Vector({
+        source: new ol.source.Vector(),
+        zIndex: 176,
+        properties: { name: "analyticsHistory" },
+        style: new ol.style.Style({
+            stroke: new ol.style.Stroke({ color: "#3d9ae8", width: 3 }),
+        }),
+    });
+    OLMap.addLayer(analyticsHistoryLayer);
+}
+
+function clearAnalyticsMapLayers() {
+    if (analyticsPathLayer) {
+        analyticsPathLayer.getSource().clear();
+    }
+    if (analyticsHistoryLayer) {
+        analyticsHistoryLayer.getSource().clear();
+    }
+}
+
+function fitAnalyticsExtent(source) {
+    if (!source || !OLMap) {
+        return;
+    }
+    const extent = source.getExtent();
+    if (extent && isFinite(extent[0])) {
+        OLMap.getView().fit(extent, { padding: [50, 50, 50, 50], maxZoom: 11, duration: 400 });
+    }
+}
+
+async function loadAnalyticsOverview() {
     try {
-        const d = await apiGet("/stats/leaderboard?category=" + category + "&period=" + period + "&limit=25");
+        const d = await analyticsApiGet("/stats/overview?period=" + analyticsPeriod);
+        const seen = document.getElementById("stat_seen");
+        const mil = document.getElementById("stat_military");
+        const high = document.getElementById("stat_highest");
+        if (seen) {
+            seen.textContent = d.aircraft_seen ?? "—";
+        }
+        if (mil) {
+            mil.textContent = d.military_aircraft ?? "—";
+        }
+        if (high) {
+            high.textContent = formatAnalyticsAlt(d.highest_alt);
+        }
+        setAnalyticsStatus("Updated " + new Date().toLocaleTimeString());
+    } catch (e) {
+        setAnalyticsStatus("API unavailable: " + e.message);
+    }
+}
+
+async function loadAnalyticsLeaderboard(category) {
+    const tbody = document.getElementById("leaderboard_body");
+    if (!tbody) {
+        return;
+    }
+    tbody.innerHTML = "<tr><td colspan='6'>Loading…</td></tr>";
+    try {
+        const d = await analyticsApiGet("/stats/leaderboard?category=" + category + "&period=" + analyticsPeriod + "&limit=25");
         tbody.innerHTML = "";
         (d.items || []).forEach((row, i) => {
-            const tr = document.createElement("tr");
-            const val = category === "highest_alt" ? formatAlt(row.value)
+            const val = category === "highest_alt" ? formatAnalyticsAlt(row.value)
                 : category === "fastest_gs" ? Math.round(row.value) + " kt"
                 : category === "largest" || category === "smallest" ? row.value.toFixed(1) + " m"
                 : row.value;
+            const tr = document.createElement("tr");
             tr.innerHTML =
                 "<td>" + (i + 1) + "</td>" +
-                "<td><a class='icao-link' href='" + mapLink(row.icao) + "'>" + row.icao.toUpperCase() + "</a></td>" +
+                "<td><a class='icao-link' href='#' data-icao='" + row.icao.toLowerCase() + "'>" + row.icao.toUpperCase() + "</a></td>" +
                 "<td>" + (row.callsign || "—") + "</td>" +
                 "<td>" + (row.icao_type || "—") + "</td>" +
                 "<td>" + val + "</td>" +
-                "<td><img class='thumb' src='" + photoUrl(row.icao) + "' onerror='this.style.display=\"none\"' alt=''/></td>";
+                "<td><img class='thumb' src='" + analyticsPhotoUrl(row.icao) + "' onerror='this.style.display=\"none\"' alt=''/></td>";
             tbody.appendChild(tr);
         });
         if (!d.items || d.items.length === 0) {
@@ -77,22 +163,25 @@ async function loadLeaderboard(category) {
     }
 }
 
-async function loadMilitary() {
+async function loadAnalyticsMilitary() {
     const tbody = document.getElementById("military_body");
+    if (!tbody) {
+        return;
+    }
     tbody.innerHTML = "<tr><td colspan='6'>Loading…</td></tr>";
     try {
-        const d = await apiGet("/stats/military?limit=50");
+        const d = await analyticsApiGet("/stats/military?limit=50");
         tbody.innerHTML = "";
         (d.items || []).forEach((row) => {
-            const tr = document.createElement("tr");
             const t = row.time ? new Date(row.time).toLocaleString() : "—";
+            const tr = document.createElement("tr");
             tr.innerHTML =
                 "<td>" + t + "</td>" +
-                "<td><a class='icao-link' href='" + mapLink(row.icao) + "'>" + row.icao.toUpperCase() + "</a></td>" +
+                "<td><a class='icao-link' href='#' data-icao='" + row.icao.toLowerCase() + "'>" + row.icao.toUpperCase() + "</a></td>" +
                 "<td>" + (row.callsign || "—") + "</td>" +
                 "<td>" + (row.icao_type || "—") + "</td>" +
-                "<td>" + formatAlt(row.alt_baro) + "</td>" +
-                "<td><img class='thumb' src='" + photoUrl(row.icao) + "' onerror='this.style.display=\"none\"' alt=''/></td>";
+                "<td>" + formatAnalyticsAlt(row.alt_baro) + "</td>" +
+                "<td><img class='thumb' src='" + analyticsPhotoUrl(row.icao) + "' onerror='this.style.display=\"none\"' alt=''/></td>";
             tbody.appendChild(tr);
         });
     } catch (e) {
@@ -100,106 +189,162 @@ async function loadMilitary() {
     }
 }
 
-function initPathMap() {
-    pathMap = L.map("pathMap").setView([51.5, 10], 6);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap",
-    }).addTo(pathMap);
-}
-
-async function loadPaths() {
-    if (!pathMap) initPathMap();
-    try {
-        const geo = await apiGet("/stats/paths/top?period=" + period + "&limit=80");
-        pathMap.eachLayer((l) => { if (l instanceof L.CircleMarker) pathMap.removeLayer(l); });
-        const features = geo.features || [];
-        features.forEach((f) => {
-            const [lon, lat] = f.geometry.coordinates;
-            const cnt = f.properties.crossing_count || 1;
-            const r = Math.min(12, 3 + Math.log(cnt));
-            L.circleMarker([lat, lon], {
-                radius: r,
-                color: "#3d9ae8",
-                fillColor: "#3d9ae8",
-                fillOpacity: 0.5,
-                weight: 1,
-            }).addTo(pathMap).bindPopup("Crossings: " + cnt);
-        });
-        if (features.length) {
-            const bounds = L.geoJSON(geo).getBounds();
-            if (bounds.isValid()) pathMap.fitBounds(bounds, { padding: [20, 20] });
-        }
-    } catch (e) {
-        setStatus("Paths: " + e.message);
-    }
-}
-
-function initHistoryMap() {
-    historyMap = L.map("historyMap").setView([51.5, 10], 8);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap",
-    }).addTo(historyMap);
-}
-
-async function loadHistory() {
-    const icao = document.getElementById("hist_icao").value.trim().toLowerCase();
-    if (icao.length !== 6) {
-        setStatus("Enter a 6-character ICAO hex");
+async function loadAnalyticsPaths() {
+    ensureAnalyticsPathLayer();
+    if (!analyticsPathLayer) {
         return;
     }
-    if (!historyMap) initHistoryMap();
-    const chartEl = document.getElementById("alt_chart");
+    const source = analyticsPathLayer.getSource();
+    source.clear();
     try {
-        const d = await apiGet("/history/" + icao + "?period=" + period);
-        const pts = d.points || [];
-        historyMap.eachLayer((l) => { if (l instanceof L.Polyline || l instanceof L.CircleMarker) historyMap.removeLayer(l); });
-        const latlngs = [];
-        const alts = [];
-        pts.forEach((p) => {
-            if (p.lat != null && p.lon != null) latlngs.push([p.lat, p.lon]);
-            if (p.alt_baro != null) alts.push(p.alt_baro);
+        const geo = await analyticsApiGet("/stats/paths/top?period=" + analyticsPeriod + "&limit=80");
+        (geo.features || []).forEach((f) => {
+            const [lon, lat] = f.geometry.coordinates;
+            source.addFeature(new ol.Feature({
+                geometry: new ol.geom.Point(ol.proj.fromLonLat([lon, lat])),
+                cnt: f.properties.crossing_count || 1,
+            }));
         });
-        if (latlngs.length) {
-            L.polyline(latlngs, { color: "#3d9ae8", weight: 3 }).addTo(historyMap);
-            historyMap.fitBounds(latlngs);
-        }
-        chartEl.textContent = alts.length
-            ? "Max alt: " + formatAlt(Math.max(...alts)) + " · Points: " + pts.length
-            : "No history for this aircraft in the selected period.";
-        setStatus("History loaded for " + icao.toUpperCase());
+        fitAnalyticsExtent(source);
     } catch (e) {
-        chartEl.textContent = "Error: " + e.message;
+        setAnalyticsStatus("Paths: " + e.message);
     }
 }
 
-function setupTabs() {
-    document.querySelectorAll("[data-period]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-            document.querySelectorAll("[data-period]").forEach((b) => b.classList.remove("active"));
-            btn.classList.add("active");
-            period = btn.dataset.period;
-            refreshAll();
+async function loadAnalyticsHistory() {
+    const input = document.getElementById("hist_icao");
+    const chartEl = document.getElementById("alt_chart");
+    if (!input) {
+        return;
+    }
+    const icao = input.value.trim().toLowerCase();
+    if (icao.length !== 6) {
+        setAnalyticsStatus("Enter a 6-character ICAO hex");
+        return;
+    }
+    ensureAnalyticsHistoryLayer();
+    if (!analyticsHistoryLayer) {
+        return;
+    }
+    const source = analyticsHistoryLayer.getSource();
+    source.clear();
+    try {
+        const d = await analyticsApiGet("/history/" + icao + "?period=" + analyticsPeriod);
+        const pts = d.points || [];
+        const coords = [];
+        const alts = [];
+        pts.forEach((p) => {
+            if (p.lat != null && p.lon != null) {
+                coords.push(ol.proj.fromLonLat([p.lon, p.lat]));
+            }
+            if (p.alt_baro != null) {
+                alts.push(p.alt_baro);
+            }
         });
-    });
-    document.querySelectorAll("[data-category]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-            document.querySelectorAll("[data-category]").forEach((b) => b.classList.remove("active"));
-            btn.classList.add("active");
-            loadLeaderboard(btn.dataset.category);
-        });
-    });
+        if (coords.length) {
+            source.addFeature(new ol.Feature({
+                geometry: new ol.geom.LineString(coords),
+            }));
+            fitAnalyticsExtent(source);
+        }
+        if (chartEl) {
+            chartEl.textContent = alts.length
+                ? "Max alt: " + formatAnalyticsAlt(Math.max(...alts)) + " · Points: " + pts.length
+                : "No history for this aircraft in the selected period.";
+        }
+        setAnalyticsStatus("History loaded for " + icao.toUpperCase());
+        selectPlaneFromAnalytics(icao);
+    } catch (e) {
+        if (chartEl) {
+            chartEl.textContent = "Error: " + e.message;
+        }
+    }
 }
 
-function refreshAll() {
-    loadOverview();
-    const active = document.querySelector("[data-category].active");
-    loadLeaderboard(active ? active.dataset.category : "highest_alt");
-    loadMilitary();
-    loadPaths();
+function setupAnalyticsTabs() {
+    const root = document.getElementById("tab-analytics");
+    if (!root) {
+        return;
+    }
+    root.querySelectorAll("[data-period]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            root.querySelectorAll("[data-period]").forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            analyticsPeriod = btn.dataset.period;
+            refreshAnalyticsDashboard();
+        });
+    });
+    root.querySelectorAll("[data-category]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            root.querySelectorAll("[data-category]").forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            loadAnalyticsLeaderboard(btn.dataset.category);
+        });
+    });
+    jQuery(root).on("click", "a.icao-link", function (e) {
+        e.preventDefault();
+        selectPlaneFromAnalytics(jQuery(this).data("icao") || jQuery(this).text());
+    });
+    const histBtn = document.getElementById("hist_load");
+    if (histBtn) {
+        histBtn.addEventListener("click", loadAnalyticsHistory);
+    }
 }
 
-document.getElementById("hist_load").addEventListener("click", loadHistory);
+function refreshAnalyticsDashboard() {
+    loadAnalyticsOverview();
+    const root = document.getElementById("tab-analytics");
+    const active = root ? root.querySelector("[data-category].active") : null;
+    loadAnalyticsLeaderboard(active ? active.dataset.category : "highest_alt");
+    loadAnalyticsMilitary();
+    loadAnalyticsPaths();
+}
 
-setupTabs();
-refreshAll();
-setInterval(refreshAll, 60000);
+function initAnalyticsUI() {
+    if (analyticsInitialized || !document.getElementById("tab-analytics") || !analyticsApiBase()) {
+        return;
+    }
+    analyticsInitialized = true;
+    setupAnalyticsTabs();
+    refreshAnalyticsDashboard();
+    setInterval(refreshAnalyticsDashboard, 60000);
+}
+
+function openAnalyticsTab() {
+    if (!analyticsApiBase()) {
+        return;
+    }
+    const $link = jQuery('#tabs a[href="#tab-analytics"]');
+    if (!$link.length) {
+        return;
+    }
+    if (toggles && toggles.sidebar_visible && !toggles.sidebar_visible.state) {
+        toggles.sidebar_visible.setState(true);
+    }
+    jQuery('#tabs').tabs('option', 'active', $link.parent().index());
+    initAnalyticsUI();
+    buttonActive('#A', true);
+}
+
+function toggleAnalytics() {
+    if (!analyticsApiBase()) {
+        return;
+    }
+    const $link = jQuery('#tabs a[href="#tab-analytics"]');
+    if (!$link.length) {
+        return;
+    }
+    const idx = $link.parent().index();
+    const current = jQuery('#tabs').tabs('option', 'active');
+    if (current === idx) {
+        jQuery('#tabs').tabs('option', 'active', 0);
+        buttonActive('#A', false);
+        clearAnalyticsMapLayers();
+        return;
+    }
+    openAnalyticsTab();
+}
+
+if (typeof initAnalyticsPoll === "function") {
+    initAnalyticsPoll();
+}

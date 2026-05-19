@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="libs/ol-8.2.0.css" type="text/css" />
     <link rel="stylesheet" href="libs/ol-layerswitcher-4.1.1.css" type="text/css"/>
     <link rel="stylesheet" href="style.css" type="text/css" />
+    <link rel="stylesheet" href="analytics.css" type="text/css" />
 
     <link rel="icon" type="image/png" href="images/tar1090-favicon.png">
 
@@ -785,7 +786,7 @@
         <div id="header_top" class="infoHeading">
           <div class="buttonContainer">
             <span id="U" title="Military only (U)" class="button inActiveButton" onclick="toggleMilitary();"><span class="buttonText">U</span></span>
-            <a id="analytics_link" href="analytics.html" title="Analytics dashboard" class="button inActiveButton" style="text-decoration:none;display:inline-flex;align-items:center;"><span class="buttonText">A</span></a>
+            <span id="A" title="Analytics (A)" class="button inActiveButton" onclick="toggleAnalytics();"><span class="buttonText">A</span></span>
             <span id="H" title="(H)ome / Reset Map" class="button inActiveButton" onclick="resetMap();"><span class="buttonText">H</span></span>
             <span id="T" title="All (T)racks" class="button inActiveButton" onclick="selectAllPlanes();"><span class="buttonText">T</span></span>
             <span id="RP" title="Repla(Y)" class="button inActiveButton replayButton" onclick="showReplayBar();" style="display: none"><span class="buttonText"></span></span>
@@ -935,6 +936,7 @@
                 <li><a href="#tab-search">Search</a></li>
                 <li><a href="#tab-filters">Filters</a></li>
                 <li><a href="#tab-columns">Columns</a></li>
+                <li id="analytics_tab_li"><a href="#tab-analytics">Analytics</a></li>
               </ul>
               <div id="tab-search">
                 <table id="tab-search-table" cellpadding="0" cellspacing="0">
@@ -1027,6 +1029,67 @@
               <div id="tab-columns">
                 <ul id="sortableColumns"></ul>
               </div>
+              <div id="tab-analytics">
+                <div class="analytics-root">
+                  <div class="analytics-tabs">
+                    <button type="button" class="active" data-period="day">Today</button>
+                    <button type="button" data-period="week">Week</button>
+                    <button type="button" data-period="month">Month</button>
+                  </div>
+                  <div class="cards">
+                    <div class="card">
+                      <div class="label">Aircraft seen</div>
+                      <div class="value" id="stat_seen">—</div>
+                    </div>
+                    <div class="card">
+                      <div class="label">Military sightings</div>
+                      <div class="value" id="stat_military">—</div>
+                    </div>
+                    <div class="card">
+                      <div class="label">Highest altitude</div>
+                      <div class="value" id="stat_highest">—</div>
+                    </div>
+                  </div>
+                  <p id="analytics_status" class="analytics-status"></p>
+                  <div class="panel">
+                    <h2>Leaderboards</h2>
+                    <div class="analytics-tabs">
+                      <button type="button" class="active" data-category="highest_alt">Highest</button>
+                      <button type="button" data-category="fastest_gs">Fastest</button>
+                      <button type="button" data-category="largest">Largest</button>
+                      <button type="button" data-category="smallest">Smallest</button>
+                    </div>
+                    <table>
+                      <thead>
+                        <tr><th>#</th><th>ICAO</th><th>Callsign</th><th>Type</th><th>Value</th><th>Photo</th></tr>
+                      </thead>
+                      <tbody id="leaderboard_body"></tbody>
+                    </table>
+                  </div>
+                  <div class="panel">
+                    <h2>Military feed</h2>
+                    <table>
+                      <thead>
+                        <tr><th>Time</th><th>ICAO</th><th>Callsign</th><th>Type</th><th>Alt</th><th>Photo</th></tr>
+                      </thead>
+                      <tbody id="military_body"></tbody>
+                    </table>
+                  </div>
+                  <div class="panel">
+                    <h2>Top flight paths</h2>
+                    <p class="analytics-map-hint">Hotspots are drawn on the live map when this tab is open.</p>
+                  </div>
+                  <div class="panel">
+                    <h2>History explorer</h2>
+                    <div class="history-controls">
+                      <input id="hist_icao" type="text" placeholder="ICAO hex e.g. 3c6443" maxlength="6"/>
+                      <button type="button" id="hist_load">Load track</button>
+                    </div>
+                    <p id="alt_chart"></p>
+                    <p class="analytics-map-hint">Track is drawn on the live map.</p>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <table id="planesTable" style="width: 100%">
@@ -1089,6 +1152,7 @@
     <script>let spriteSrc = 'images/sprites.png';</script>
     <script src="planeObject.js"></script>
     <script src="script.js"></script>
+    <script src="analytics.js"></script>
 
     <link rel="preload" as="image" crossOrigin="anonymous" href="images/sprites.png">
 

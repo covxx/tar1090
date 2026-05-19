@@ -1209,6 +1209,17 @@ function earlyInitPage() {
         active: loStore['active_tab'],
         activate: function (event, ui) {
             loStore['active_tab'] = jQuery("#tabs").tabs("option", "active");
+            if (ui.newPanel && ui.newPanel.attr('id') === 'tab-analytics') {
+                if (typeof initAnalyticsUI === 'function') {
+                    initAnalyticsUI();
+                }
+                buttonActive('#A', true);
+            } else {
+                buttonActive('#A', false);
+                if (typeof clearAnalyticsMapLayers === 'function') {
+                    clearAnalyticsMapLayers();
+                }
+            }
         },
         collapsible: true
     });
@@ -9213,12 +9224,20 @@ function refreshAnalyticsStats() {
 
 function initAnalyticsPoll() {
     if (!getAnalyticsApiBase()) {
+        jQuery('#analytics_tab_li, #A').hide();
         return;
     }
+    jQuery('#analytics_tab_li, #A').show();
     refreshAnalyticsStats();
     setInterval(refreshAnalyticsStats, 60000);
+    if (usp.has('analytics')) {
+        setTimeout(function () {
+            if (typeof openAnalyticsTab === 'function') {
+                openAnalyticsTab();
+            }
+        }, 800);
+    }
 }
 
 parseURLIcaos();
 initialize();
-initAnalyticsPoll();
