@@ -31,7 +31,7 @@ SiteShow    = true;
 SiteName    = "ADS-B Analytics";
 
 // Analytics API (default port 9056; empty analyticsApiUrl = auto hostname)
-analyticsApiUrl = "http://127.0.0.1:9056";
+analyticsApiUrl = "";
 analyticsEnabled = true;
 
 // Update GPS location (keep map centered on GPS location)
