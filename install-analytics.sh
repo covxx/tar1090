@@ -19,6 +19,8 @@ if ! command -v apt-get &>/dev/null; then
 fi
 
 PYTHON3="$(command -v python3)"
+VENV_DIR="$ipath/analytics-venv"
+VENV_PY="$VENV_DIR/bin/python"
 
 echo "--------------"
 echo "Installing tar1090 analytics (native)..."
@@ -32,7 +34,7 @@ apt_install() {
 }
 
 # ---- System packages (no psycopg2, no libpq-dev, no python3-dev) ----
-apt_install postgresql postgresql-client python3 python3-pip
+apt_install postgresql postgresql-client python3 python3-pip python3-venv
 
 # ---- Ensure local service account exists ----
 if ! getent group tar1090 >/dev/null; then
@@ -42,10 +44,7 @@ if ! id -u tar1090 >/dev/null 2>&1; then
     useradd --system --gid tar1090 --home-dir /nonexistent --shell /usr/sbin/nologin tar1090
 fi
 
-# ---- Nuke ALL psycopg2 leftovers (pip packages, pip cache, old lib dirs, old requirements) ----
-"$PYTHON3" -m pip uninstall -y psycopg2-binary 2>/dev/null || true
-"$PYTHON3" -m pip uninstall -y psycopg2 2>/dev/null || true
-"$PYTHON3" -m pip cache purge 2>/dev/null || true
+# ---- Nuke old analytics python environments/leftovers ----
 rm -rf "$ipath/analytics-lib" "$ipath/analytics-venv"
 rm -f "$ipath/analytics/requirements.txt" "$ipath/analytics/requirements-native.txt"
 
@@ -69,37 +68,31 @@ cp "$git_dir/services/schema-v2.sql" "$analytics_dir/schema-v2.sql" 2>/dev/null 
 cp "$git_dir/services/ingest/"*.json "$analytics_dir/ingest/" 2>/dev/null || true
 chown -R tar1090:tar1090 "$analytics_dir" /var/lib/tar1090/photo-cache 2>/dev/null || true
 
-# ---- Install ALL pip packages system-wide (pure Python, no wheels to build) ----
-echo "Installing pg8000 + fastapi + uvicorn + deps via pip ..."
-"$PYTHON3" -m pip install --no-cache-dir --break-system-packages \
+# ---- Create dedicated virtualenv and install python deps there ----
+echo "Creating analytics virtualenv at $VENV_DIR ..."
+"$PYTHON3" -m venv "$VENV_DIR"
+"$VENV_PY" -m pip install --no-cache-dir --upgrade pip setuptools wheel
+echo "Installing pg8000 + fastapi + uvicorn + deps into virtualenv ..."
+"$VENV_PY" -m pip install --no-cache-dir \
     "pg8000>=1.31.2" \
     "fastapi==0.115.0" \
     "uvicorn[standard]==0.30.6" \
     "httpx==0.27.2" \
-    "geohash2==1.1.0" \
-    2>&1 || {
-        echo "Retrying pip without --break-system-packages ..."
-        "$PYTHON3" -m pip install --no-cache-dir \
-            "pg8000>=1.31.2" \
-            "fastapi==0.115.0" \
-            "uvicorn[standard]==0.30.6" \
-            "httpx==0.27.2" \
-            "geohash2==1.1.0"
-    }
+    "geohash2==1.1.0"
 
 # ---- Verify imports ----
-"$PYTHON3" -c "import pg8000.native; print('pg8000 OK:', pg8000.__version__)" || {
+"$VENV_PY" -c "import pg8000.native; print('pg8000 OK:', pg8000.__version__)" || {
     echo "FATAL: pg8000 not importable. pip output above should explain why."
     exit 1
 }
-"$PYTHON3" -c "import fastapi, uvicorn, httpx, geohash2; print('fastapi+uvicorn+httpx+geohash2 OK')" || {
+"$VENV_PY" -c "import fastapi, uvicorn, httpx, geohash2; print('fastapi+uvicorn+httpx+geohash2 OK')" || {
     echo "FATAL: Python deps not importable."
     exit 1
 }
 echo "All Python deps OK."
 
 # ---- Quick DB connection test ----
-"$PYTHON3" -c "
+"$VENV_PY" -c "
 import pg8000.native
 try:
     c = pg8000.native.Connection(user='tar1090', password='tar1090', host='127.0.0.1', port=5432, database='tar1090')
@@ -144,6 +137,9 @@ chmod 644 /etc/default/tar1090-analytics
 cp "$git_dir/tar1090-analytics-api.service" /lib/systemd/system/
 cp "$git_dir/tar1090-analytics-ingest.service" /lib/systemd/system/
 cp "$git_dir/tar1090-analytics-jobs.service" /lib/systemd/system/
+sed -i "s#^ExecStart=.*#ExecStart=$VENV_PY -m uvicorn main:app --host 0.0.0.0 --port 9056#" /lib/systemd/system/tar1090-analytics-api.service
+sed -i "s#^ExecStart=.*#ExecStart=$VENV_PY main.py#" /lib/systemd/system/tar1090-analytics-ingest.service
+sed -i "s#^ExecStart=.*#ExecStart=$VENV_PY main.py#" /lib/systemd/system/tar1090-analytics-jobs.service
 
 systemctl daemon-reload
 systemctl enable tar1090-analytics-api tar1090-analytics-ingest tar1090-analytics-jobs
