@@ -34,10 +34,12 @@ apt_install() {
 # ---- System packages (no psycopg2, no libpq-dev, no python3-dev) ----
 apt_install postgresql postgresql-client python3 python3-pip
 
-# ---- Clean leftovers from previous psycopg2-based installs ----
+# ---- Nuke ALL psycopg2 leftovers (pip packages, pip cache, old lib dirs, old requirements) ----
 "$PYTHON3" -m pip uninstall -y psycopg2-binary 2>/dev/null || true
 "$PYTHON3" -m pip uninstall -y psycopg2 2>/dev/null || true
+"$PYTHON3" -m pip cache purge 2>/dev/null || true
 rm -rf "$ipath/analytics-lib" "$ipath/analytics-venv"
+rm -f "$ipath/analytics/requirements.txt" "$ipath/analytics/requirements-native.txt"
 
 # ---- PostgreSQL setup ----
 systemctl enable postgresql
@@ -58,7 +60,7 @@ cp "$git_dir/services/schema-plain.sql" "$analytics_dir/schema-plain.sql"
 
 # ---- Install ALL pip packages system-wide (pure Python, no wheels to build) ----
 echo "Installing pg8000 + fastapi + uvicorn + deps via pip ..."
-"$PYTHON3" -m pip install --break-system-packages \
+"$PYTHON3" -m pip install --no-cache-dir --break-system-packages \
     "pg8000>=1.31.2" \
     "fastapi==0.115.0" \
     "uvicorn[standard]==0.30.6" \
@@ -66,7 +68,7 @@ echo "Installing pg8000 + fastapi + uvicorn + deps via pip ..."
     "geohash2==1.1.0" \
     2>&1 || {
         echo "Retrying pip without --break-system-packages ..."
-        "$PYTHON3" -m pip install \
+        "$PYTHON3" -m pip install --no-cache-dir \
             "pg8000>=1.31.2" \
             "fastapi==0.115.0" \
             "uvicorn[standard]==0.30.6" \
