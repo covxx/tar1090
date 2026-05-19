@@ -58,24 +58,24 @@ cp "$git_dir/services/ingest/"*.py "$analytics_dir/ingest/"
 cp "$git_dir/services/api/"*.py "$analytics_dir/api/"
 cp "$git_dir/services/jobs/"*.py "$analytics_dir/jobs/"
 cp "$git_dir/services/schema-plain.sql" "$analytics_dir/schema-plain.sql"
-cp "$git_dir/services/requirements.txt" "$analytics_dir/requirements.txt"
 
-REQ_NATIVE="$analytics_dir/requirements-native.txt"
-if [[ -f "$git_dir/services/requirements-native.txt" ]]; then
-    cp "$git_dir/services/requirements-native.txt" "$REQ_NATIVE"
-else
-    cat > "$REQ_NATIVE" <<'EOF'
+# Clean stale analytics-lib that may contain psycopg2-binary from older installs
+rm -rf "$PYLIB" "$ipath/analytics-venv"
+mkdir -p "$PYLIB"
+
+# Build the pip requirements inline — never include psycopg2 in any form
+cat > "$analytics_dir/requirements-native.txt" <<'EOF'
 geohash2==1.1.0
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 httpx==0.27.2
 EOF
-fi
-
-rm -rf "$ipath/analytics-venv"
 
 pip_install_target() {
-    if "$PYTHON3" -m pip install --target "$PYLIB" "$@"; then
+    if "$PYTHON3" -m pip install --target "$PYLIB" --no-deps "$@" 2>/dev/null; then
+        return 0
+    fi
+    if "$PYTHON3" -m pip install --target "$PYLIB" "$@" 2>/dev/null; then
         return 0
     fi
     echo "pip install --target failed; retrying with --break-system-packages ..."
@@ -83,8 +83,8 @@ pip_install_target() {
 }
 
 echo "Installing Python packages (no psycopg2 via pip) into $PYLIB ..."
-"$PYTHON3" -m pip install --upgrade pip wheel setuptools 2>/dev/null || true
-pip_install_target -r "$REQ_NATIVE"
+"$PYTHON3" -m pip install --upgrade pip 2>/dev/null || true
+pip_install_target -r "$analytics_dir/requirements-native.txt"
 
 # PYLIB for fastapi/uvicorn; psycopg2 stays on system site-packages
 PYTHONPATH_EXTRA="$PYLIB"
