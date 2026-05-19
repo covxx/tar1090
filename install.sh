@@ -340,6 +340,19 @@ do
 
     cp "$ipath/customIcon.png" "$TMP/images/tar1090-favicon.png" &>/dev/null || true
 
+    # Ensure analytics fork settings exist (install preserves existing config.js)
+    if ! grep -qE '^analyticsEnabled\s*=' "$TMP/config.js" 2>/dev/null; then
+        cat >>"$TMP/config.js" <<'EOF'
+
+// --- analytics fork (added by install.sh) ---
+analyticsEnabled = true;
+analyticsApiUrl = "http://127.0.0.1:8080";
+showPictures = true;
+planespottersAPI = true;
+showSil = true;
+EOF
+    fi
+
     # bust cache for all css and js files
 
     dir=$(pwd)
