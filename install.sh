@@ -123,6 +123,44 @@ function revision() {
     git rev-parse --short HEAD 2>/dev/null || echo "$RANDOM-$RANDOM"
 }
 
+function fetch_repo_file() {
+    local relpath="$1"
+    local dest="$2"
+    mkdir -p "$(dirname "$dest")"
+    curl -fsSL --retry 3 --retry-delay 2 \
+        "https://raw.githubusercontent.com/${repo_raw}/${repo_branch}/${relpath}" \
+        -o "$dest"
+}
+
+function ensure_analytics_in_repo() {
+    local root="$1"
+    if [[ -f "$root/install-analytics.sh" ]] && [[ -f "$root/services/ingest/main.py" ]]; then
+        return 0
+    fi
+    echo "Downloading analytics files from github.com/${repo_raw} ..."
+    fetch_repo_file "install-analytics.sh" "$root/install-analytics.sh" || return 1
+    chmod +x "$root/install-analytics.sh"
+    local analytics_files=(
+        services/schema-plain.sql
+        services/requirements.txt
+        services/ingest/main.py
+        services/ingest/db.py
+        services/ingest/enrich.py
+        services/api/main.py
+        services/api/queries.py
+        services/jobs/main.py
+        services/jobs/aggregate.py
+        tar1090-analytics-api.service
+        tar1090-analytics-ingest.service
+        tar1090-analytics-jobs.service
+    )
+    local f
+    for f in "${analytics_files[@]}"; do
+        fetch_repo_file "$f" "$root/$f" || echo "WARNING: could not fetch $f"
+    done
+    return 0
+}
+
 if ! { [[ "$1" == "test" ]] && cd "$gpath/git-db"; }; then
     DB_VERSION_NEW=$(curl --silent --show-error "https://raw.githubusercontent.com/${db_repo#https://github.com/}/${db_branch}/version")
     if  [[ "$(cat "$gpath/git-db/version" 2>/dev/null)" != "$DB_VERSION_NEW" ]]; then
@@ -157,11 +195,13 @@ else
     if [[ "$(cat "$gpath/git/version" 2>/dev/null)" != "$VERSION_NEW" ]]; then
         need_git_update=yes
     fi
-    # Re-fetch if checkout is incomplete (e.g. cached before install-analytics.sh existed)
+    # Re-fetch if checkout is incomplete or still points at an old upstream clone
     if [[ ! -f "$gpath/git/install-analytics.sh" ]] || [[ ! -f "$gpath/git/tar1090.sh" ]]; then
         need_git_update=yes
+        rm -rf "$gpath/git"
     fi
     if [[ "$need_git_update" == "yes" ]]; then
+        rm -rf "$gpath/git"
         if ! getGIT "$repo" "$repo_branch" "$gpath/git"; then
             echo "Unable to download files, exiting! (Maybe try again?)"
             exit 1
@@ -171,7 +211,11 @@ else
         echo "Unable to download files, exiting! (Maybe try again?)"
         exit 1
     fi
-    TAR_VERSION="$(cat version)"
+    ensure_analytics_in_repo "$gpath/git" || {
+        echo "FATAL: analytics files missing from $repo — check network or repo branch ${repo_branch}"
+        exit 1
+    }
+    TAR_VERSION="$(cat version 2>/dev/null || echo unknown)"
 fi
 
 GIT_ROOT="$gpath/git"
@@ -246,12 +290,8 @@ fi
 
 # copy over base files (always from git checkout, not cwd — wget one-liner only has install.sh)
 cp "$GIT_ROOT/install.sh" "$GIT_ROOT/uninstall.sh" "$GIT_ROOT/getupintheair.sh" "$GIT_ROOT/LICENSE" "$GIT_ROOT/README.md" "$ipath/"
-if [[ -f "$GIT_ROOT/install-analytics.sh" ]]; then
-    cp "$GIT_ROOT/install-analytics.sh" "$ipath/"
-    chmod +x "$ipath/install-analytics.sh"
-else
-    echo "WARNING: install-analytics.sh not in repo checkout; analytics install will be skipped."
-fi
+cp "$GIT_ROOT/install-analytics.sh" "$ipath/"
+chmod +x "$ipath/install-analytics.sh"
 cp "$GIT_ROOT"/tar1090-analytics-*.service "$GIT_ROOT/README-ANALYTICS.md" "$GIT_ROOT/docker-compose.yml" "$GIT_ROOT/nginx-analytics.conf" "$GIT_ROOT/.env.example" "$ipath" 2>/dev/null || true
 cp "$GIT_ROOT/default" "$ipath/example_config_dont_edit"
 cp "$GIT_ROOT/html/config.js" "$ipath/example_config.js"
