@@ -19,8 +19,8 @@ sedreplaceargs=()
 function moveFile() {
     FILE=$1
     md5sum=$(md5sum "$FILE" | cut -d' ' -f1)
-    prefix=$(cut -d '.' -f1 <<< "$FILE")
-    postfix=$(cut -d '.' -f2 <<< "$FILE")
+    prefix="${FILE%.*}"
+    postfix="${FILE##*.}"
     newname="${prefix}_${md5sum}.${postfix}"
     mv "$FILE" "$newname"
     sedreplaceargs+=("-e" "s#${FILE}#${newname}#")
