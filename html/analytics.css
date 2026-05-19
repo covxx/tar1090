@@ -163,3 +163,50 @@ body.analytics-standalone main {
 body.analytics-standalone a {
   color: #3d9ae8;
 }
+
+#tab-analytics .analytics-subtabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+#tab-analytics .analytics-subtabs button {
+  background: var(--analytics-panel);
+  border: 1px solid var(--analytics-border);
+  color: var(--analytics-text);
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+#tab-analytics .analytics-subtabs button.active {
+  background: var(--analytics-accent);
+  border-color: var(--analytics-accent);
+  color: #fff;
+}
+
+#tab-analytics .analytics-view {
+  display: none;
+}
+
+#tab-analytics .analytics-view.active {
+  display: block;
+}
+
+#tab-analytics .analytics-btn {
+  background: var(--analytics-accent);
+  border: none;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-right: 6px;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+
+#tab-analytics canvas {
+  max-width: 100%;
+}

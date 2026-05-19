@@ -150,3 +150,240 @@ def _rows(raw) -> list:
             }
         )
     return out
+
+
+def traffic_trends(conn, granularity: str, since: datetime) -> list:
+    table = "traffic_hourly" if granularity == "hour" else "traffic_daily"
+    col = "hour" if granularity == "hour" else "day"
+    rows = conn.run(
+        f"SELECT {col}, distinct_icao, position_count, military_icao FROM {table} "
+        f"WHERE {col} >= :since ORDER BY {col}",
+        since=since.date() if granularity == "day" and hasattr(since, "date") else since,
+    )
+    return [
+        {
+            "t": r[0].isoformat() if hasattr(r[0], "isoformat") else str(r[0]),
+            "distinct_icao": r[1],
+            "position_count": r[2],
+            "military_icao": r[3],
+        }
+        for r in rows
+    ]
+
+
+def peak_hours(conn, since: datetime, tz: str = "UTC") -> list:
+    rows = conn.run(
+        "SELECT EXTRACT(HOUR FROM hour AT TIME ZONE :tz)::int AS h, "
+        "SUM(distinct_icao) FROM traffic_hourly WHERE hour >= :since GROUP BY 1 ORDER BY 1",
+        since=since, tz=tz,
+    )
+    return [{"hour": int(r[0]), "count": int(r[1] or 0)} for r in rows]
+
+
+def paths_heatmap(conn, since: datetime, limit: int) -> dict:
+    rows = conn.run(
+        "SELECT cell_id, SUM(crossing_count) AS cnt, AVG(avg_alt) AS avg_alt "
+        "FROM path_cells WHERE hour >= :since GROUP BY cell_id ORDER BY cnt DESC LIMIT :lim",
+        since=since, lim=limit,
+    )
+    features = []
+    for cell_id, cnt, avg_alt in rows:
+        try:
+            lat, lon, _, _ = _decode_geohash(cell_id)
+        except Exception:
+            continue
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                "properties": {
+                    "cell_id": cell_id,
+                    "crossing_count": int(cnt),
+                    "avg_alt": float(avg_alt) if avg_alt else None,
+                },
+            }
+        )
+    return {"type": "FeatureCollection", "features": features}
+
+
+def altitude_histogram(conn, since: datetime) -> dict:
+    rows = conn.run(
+        "SELECT bin_floor, SUM(count) FROM altitude_bins_hourly WHERE hour >= :since GROUP BY 1 ORDER BY 1",
+        since=since,
+    )
+    bins = [{"bin_floor": int(r[0]), "count": int(r[1])} for r in rows]
+    labels = {
+        0: "ground/low",
+        1000: "GA (<3000ft)",
+        3000: "low (<10000ft)",
+        10000: "medium",
+        18000: "high",
+        25000: "commercial",
+        40000: "very high",
+    }
+    for b in bins:
+        b["label"] = labels.get(b["bin_floor"], str(b["bin_floor"]))
+    return {"bins": bins}
+
+
+def overnight_list(conn, night_date) -> list:
+    rows = conn.run(
+        "SELECT icao, first_seen, last_seen, callsign, is_military FROM overnight_activity "
+        "WHERE night_date = :nd ORDER BY first_seen",
+        nd=night_date,
+    )
+    return [
+        {
+            "icao": r[0],
+            "first_seen": r[1].isoformat() if r[1] else None,
+            "last_seen": r[2].isoformat() if r[2] else None,
+            "callsign": r[3],
+            "is_military": r[4],
+        }
+        for r in rows
+    ]
+
+
+def military_by_role(conn, since: datetime) -> list:
+    rows = conn.run(
+        "SELECT COALESCE(military_role, 'other'), COUNT(*) FROM military_sightings "
+        "WHERE time >= :since GROUP BY 1 ORDER BY 2 DESC",
+        since=since,
+    )
+    return [{"role": r[0], "count": int(r[1])} for r in rows]
+
+
+def privacy_sightings_list(conn, flag: str | None, since: datetime, limit: int) -> list:
+    q = "SELECT time, icao, flag, callsign, lat, lon FROM privacy_sightings WHERE time >= :since"
+    params = {"since": since, "lim": limit}
+    if flag:
+        q += " AND flag = :flag"
+        params["flag"] = flag
+    q += " ORDER BY time DESC LIMIT :lim"
+    rows = conn.run(q, **params)
+    return [
+        {
+            "time": r[0].isoformat() if r[0] else None,
+            "icao": r[1],
+            "flag": r[2],
+            "callsign": r[3],
+            "lat": r[4],
+            "lon": r[5],
+        }
+        for r in rows
+    ]
+
+
+def squawk_alerts_list(conn, code: str | None, active: bool, since: datetime, limit: int) -> list:
+    q = "SELECT id, icao, squawk, started_at, ended_at, callsign, icao_type, last_lat, last_lon, is_military "
+    q += "FROM squawk_alerts WHERE started_at >= :since"
+    params = {"since": since, "lim": limit}
+    if code:
+        q += " AND squawk = :code"
+        params["code"] = code
+    if active:
+        q += " AND ended_at IS NULL"
+    q += " ORDER BY started_at DESC LIMIT :lim"
+    rows = conn.run(q, **params)
+    out = []
+    for r in rows:
+        out.append({
+            "id": r[0], "icao": r[1], "squawk": r[2],
+            "started_at": r[3].isoformat() if r[3] else None,
+            "ended_at": r[4].isoformat() if r[4] else None,
+            "callsign": r[5], "icao_type": r[6],
+            "lat": r[7], "lon": r[8], "is_military": r[9],
+        })
+    return out
+
+
+def government_list(conn, since: datetime, limit: int) -> list:
+    rows = conn.run(
+        "SELECT time, icao, country, agency, callsign, lat, lon, alt_baro "
+        "FROM government_sightings WHERE time >= :since ORDER BY time DESC LIMIT :lim",
+        since=since, lim=limit,
+    )
+    return [
+        {
+            "time": r[0].isoformat() if r[0] else None,
+            "icao": r[1], "country": r[2], "agency": r[3],
+            "callsign": r[4], "lat": r[5], "lon": r[6], "alt_baro": r[7],
+        }
+        for r in rows
+    ]
+
+
+def behavior_events_list(conn, pattern_type: str | None, since: datetime, limit: int) -> list:
+    q = (
+        "SELECT id, icao, pattern_type, started_at, ended_at, center_lat, center_lon, "
+        "confidence, is_military, callsign, icao_type, metadata FROM behavior_events WHERE started_at >= :since"
+    )
+    params = {"since": since, "lim": limit}
+    if pattern_type:
+        q += " AND pattern_type = :pt"
+        params["pt"] = pattern_type
+    q += " ORDER BY started_at DESC LIMIT :lim"
+    rows = conn.run(q, **params)
+    out = []
+    for r in rows:
+        out.append({
+            "id": r[0], "icao": r[1], "pattern_type": r[2],
+            "started_at": r[3].isoformat() if r[3] else None,
+            "ended_at": r[4].isoformat() if r[4] else None,
+            "center_lat": r[5], "center_lon": r[6],
+            "confidence": r[7], "is_military": r[8],
+            "callsign": r[9], "icao_type": r[10],
+            "metadata": r[11],
+        })
+    return out
+
+
+def behavior_event_detail(conn, event_id: int) -> dict | None:
+    rows = conn.run(
+        "SELECT id, icao, pattern_type, started_at, ended_at, center_lat, center_lon, "
+        "confidence, is_military, callsign, icao_type, metadata FROM behavior_events WHERE id = :id",
+        id=event_id,
+    )
+    if not rows:
+        return None
+    r = rows[0]
+    points = history_positions(conn, r[1], r[3], r[4])
+    coords = [[p["lon"], p["lat"]] for p in points if p.get("lat") is not None]
+    return {
+        "id": r[0], "icao": r[1], "pattern_type": r[2],
+        "started_at": r[3].isoformat() if r[3] else None,
+        "ended_at": r[4].isoformat() if r[4] else None,
+        "center_lat": r[5], "center_lon": r[6],
+        "confidence": r[7], "is_military": r[8],
+        "callsign": r[9], "icao_type": r[10], "metadata": r[11],
+        "track": {"type": "Feature", "geometry": {"type": "LineString", "coordinates": coords}},
+    }
+
+
+def repeat_visits_list(conn, since: datetime, min_visits: int) -> list:
+    rows = conn.run(
+        "SELECT icao, cell_id, dow, hour_bucket, visit_count, last_seen FROM repeat_visit_signatures "
+        "WHERE visit_count >= :mv AND last_seen >= :since ORDER BY visit_count DESC LIMIT 100",
+        mv=min_visits, since=since,
+    )
+    out = []
+    for r in rows:
+        try:
+            lat, lon, _, _ = _decode_geohash(r[1])
+        except Exception:
+            lat, lon = None, None
+        out.append({
+            "icao": r[0], "cell_id": r[1], "dow": r[2], "hour_bucket": r[3],
+            "visit_count": r[4],
+            "last_seen": r[5].isoformat() if r[5] else None,
+            "lat": lat, "lon": lon,
+        })
+    return out
+
+
+def patterns_summary(conn, since: datetime) -> dict:
+    rows = conn.run(
+        "SELECT pattern_type, COUNT(*) FROM behavior_events WHERE started_at >= :since GROUP BY 1",
+        since=since,
+    )
+    return {r[0]: int(r[1]) for r in rows}

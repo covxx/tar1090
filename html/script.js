@@ -9223,6 +9223,19 @@ function refreshAnalyticsStats() {
         .fail(function() {
             jQuery('#analytics_stats_row').hide();
         });
+    jQuery.getJSON(base + '/stats/alerts/squawk?active=true&period=day')
+        .done(function(data) {
+            const n = (data.items || []).length;
+            if (n > 0) {
+                jQuery('#analytics_squawk_row').show();
+                jQuery('#analytics_squawk_active').text(n);
+            } else {
+                jQuery('#analytics_squawk_row').hide();
+            }
+        })
+        .fail(function() {
+            jQuery('#analytics_squawk_row').hide();
+        });
 }
 
 function initAnalyticsPoll() {

@@ -97,3 +97,5 @@ DO $$ BEGIN
   PERFORM add_retention_policy('military_sightings', INTERVAL '365 days');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+-- v2: see schema-v2.sql (appended inline for pg8000 init)

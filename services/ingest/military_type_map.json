@@ -1,0 +1,6 @@
+{
+  "E3TF": "isr", "E3CF": "isr", "E737": "isr", "P8": "isr", "RC135": "isr", "U2": "isr", "RQ4": "isr", "GLF5": "isr",
+  "K35R": "tanker", "KC10": "tanker", "KC46": "tanker", "A332": "tanker",
+  "F16": "fighter", "F15": "fighter", "F18": "fighter", "F35": "fighter", "F22": "fighter", "EF20": "fighter", "GR4": "fighter",
+  "C17": "cargo", "C130": "cargo", "C5": "cargo", "A400": "cargo", "C295": "cargo"
+}

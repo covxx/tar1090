@@ -65,6 +65,8 @@ cp "$git_dir/services/ingest/"*.py "$analytics_dir/ingest/"
 cp "$git_dir/services/api/"*.py   "$analytics_dir/api/"
 cp "$git_dir/services/jobs/"*.py  "$analytics_dir/jobs/"
 cp "$git_dir/services/schema-plain.sql" "$analytics_dir/schema-plain.sql"
+cp "$git_dir/services/schema-v2.sql" "$analytics_dir/schema-v2.sql" 2>/dev/null || true
+cp "$git_dir/services/ingest/"*.json "$analytics_dir/ingest/" 2>/dev/null || true
 chown -R tar1090:tar1090 "$analytics_dir" /var/lib/tar1090/photo-cache 2>/dev/null || true
 
 # ---- Install ALL pip packages system-wide (pure Python, no wheels to build) ----
@@ -112,6 +114,10 @@ except Exception as e:
 export PGPASSWORD=tar1090
 psql -h 127.0.0.1 -U tar1090 -d tar1090 -f "$analytics_dir/schema-plain.sql" 2>/dev/null || \
     sudo -u postgres psql -d tar1090 -f "$analytics_dir/schema-plain.sql"
+if [[ -f "$analytics_dir/schema-v2.sql" ]]; then
+    psql -h 127.0.0.1 -U tar1090 -d tar1090 -f "$analytics_dir/schema-v2.sql" 2>/dev/null || \
+        sudo -u postgres psql -d tar1090 -f "$analytics_dir/schema-v2.sql"
+fi
 
 # ---- Env file ----
 db_path=""

@@ -908,6 +908,7 @@
                       <td style="width: 50%"><span id="with_positions" class="infoBlockTitleText">With Position:</span> <span id="dump1090_total_ac_positions">n/a</span></td>
                       <td id="dump1090_total_history_td"><span class="infoBlockTitleText">History:</span> <span id="dump1090_total_history">n/a</span> positions</td>
                     </tr>
+                    <tr id="analytics_squawk_row" class="infoblock_body hidden"><td colspan="2"><span class="infoBlockTitleText">Emergency squawks:</span> <span id="analytics_squawk_active">0</span></td></tr>
                     <tr id="analytics_stats_row" class="infoblock_body hidden">
                       <td colspan="2"><span class="infoBlockTitleText">Today highest:</span> <span id="analytics_highest">n/a</span> &nbsp;|&nbsp; <span class="infoBlockTitleText">Military:</span> <span id="analytics_military">n/a</span></td>
                     </tr>
@@ -1031,11 +1032,18 @@
               </div>
               <div id="tab-analytics">
                 <div class="analytics-root">
-                  <div class="analytics-tabs">
+                  <div class="analytics-subtabs">
+                    <button type="button" class="active" data-aview="overview">Overview</button>
+                    <button type="button" data-aview="traffic">Traffic</button>
+                    <button type="button" data-aview="special">Special</button>
+                    <button type="button" data-aview="patterns">Patterns</button>
+                  </div>
+                  <div class="analytics-tabs analytics-period-bar">
                     <button type="button" class="active" data-period="day">Today</button>
                     <button type="button" data-period="week">Week</button>
                     <button type="button" data-period="month">Month</button>
                   </div>
+                  <div id="aview-overview" class="analytics-view active">
                   <div class="cards">
                     <div class="card">
                       <div class="label">Aircraft seen</div>
@@ -1087,6 +1095,33 @@
                     </div>
                     <p id="alt_chart"></p>
                     <p class="analytics-map-hint">Track is drawn on the live map.</p>
+                  </div>
+                  </div>
+                  <div id="aview-traffic" class="analytics-view">
+                    <div class="panel"><h2>Traffic trend</h2><canvas id="chart_traffic_trend" height="140"></canvas></div>
+                    <div class="panel"><h2>Peak hours</h2><canvas id="chart_peak_hours" height="140"></canvas></div>
+                    <div class="panel"><h2>Altitude distribution</h2><canvas id="chart_altitude_hist" height="140"></canvas></div>
+                    <div class="panel"><h2>Overnight traffic</h2><table><thead><tr><th>ICAO</th><th>First</th><th>Last</th><th>Callsign</th></tr></thead><tbody id="overnight_body"></tbody></table></div>
+                    <div class="panel"><h2>Corridor heatmap</h2><button type="button" id="heatmap_load" class="analytics-btn">Load heatmap</button><button type="button" id="heatmap_fit" class="analytics-btn">Fit map</button></div>
+                  </div>
+                  <div id="aview-special" class="analytics-view">
+                    <div class="panel"><h2>Military by role</h2><canvas id="chart_mil_role" height="120"></canvas></div>
+                    <div class="panel"><h2>PIA / LADD</h2><table><thead><tr><th>Time</th><th>ICAO</th><th>Flag</th><th>Callsign</th></tr></thead><tbody id="privacy_body"></tbody></table></div>
+                    <div class="panel"><h2>Emergency squawks</h2><table><thead><tr><th>Code</th><th>Started</th><th>ICAO</th><th>Callsign</th></tr></thead><tbody id="squawk_body"></tbody></table></div>
+                    <div class="panel"><h2>Government aircraft</h2><table><thead><tr><th>Time</th><th>ICAO</th><th>Agency</th><th>Callsign</th></tr></thead><tbody id="government_body"></tbody></table></div>
+                  </div>
+                  <div id="aview-patterns" class="analytics-view">
+                    <div class="cards" id="pattern_summary_cards"></div>
+                    <div class="analytics-tabs" id="pattern_type_tabs">
+                      <button type="button" class="active" data-ptype="">All</button>
+                      <button type="button" data-ptype="loiter">Loiter</button>
+                      <button type="button" data-ptype="racetrack">Racetrack</button>
+                      <button type="button" data-ptype="alt_oscillation">Alt oscillation</button>
+                    </div>
+                    <div class="panel"><h2>Detected patterns</h2><table><thead><tr><th>Time</th><th>Type</th><th>ICAO</th><th>Conf</th><th></th></tr></thead><tbody id="patterns_body"></tbody></table></div>
+                    <div class="panel"><h2>Repeat visits</h2><table><thead><tr><th>ICAO</th><th>Visits</th><th>DOW</th><th>Hour</th><th></th></tr></thead><tbody id="repeat_body"></tbody></table></div>
+                  </div>
+
                   </div>
                 </div>
               </div>
@@ -1152,6 +1187,7 @@
     <script>let spriteSrc = 'images/sprites.png';</script>
     <script src="planeObject.js"></script>
     <script src="script.js"></script>
+    <script src="libs/chart.umd.min.js"></script>
     <script src="analytics.js"></script>
 
     <link rel="preload" as="image" crossOrigin="anonymous" href="images/sprites.png">

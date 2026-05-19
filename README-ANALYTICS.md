@@ -58,12 +58,33 @@ python3 -c "import psycopg2, fastapi; print('ok')"
 
 ## API endpoints
 
+**Overview & leaderboards**
 - `GET /stats/overview?period=day|week|month`
 - `GET /stats/leaderboard?category=highest_alt|fastest_gs|largest|smallest|military`
-- `GET /stats/paths/top?period=week`
-- `GET /stats/military`
+- `GET /stats/paths/top?period=week` — top corridor cells
+- `GET /stats/military?period=week`
 - `GET /history/{icao}?period=day`
 - `GET /photo/{icao}`
+- `GET /health/details`
+
+**Traffic dashboard**
+- `GET /stats/traffic/trends?granularity=hour|day&period=week`
+- `GET /stats/traffic/peak-hours?period=month`
+- `GET /stats/paths/heatmap?period=week&limit=200`
+- `GET /stats/altitude/histogram?period=day`
+- `GET /stats/overnight?night=YYYY-MM-DD`
+
+**Military & special**
+- `GET /stats/military/by-role?period=week`
+- `GET /stats/privacy?flag=pia|ladd&period=week`
+- `GET /stats/alerts/squawk?code=7700&active=true&period=week`
+- `GET /stats/government?period=week`
+
+**Behavior patterns**
+- `GET /stats/patterns?type=loiter|racetrack|alt_oscillation&period=week`
+- `GET /stats/patterns/summary?period=week`
+- `GET /stats/patterns/repeat-visits?period=month`
+- `GET /stats/patterns/{event_id}` — event detail + track GeoJSON
 
 ## Optional: Docker
 

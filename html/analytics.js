@@ -2,9 +2,14 @@
 
 let analyticsPeriod = "day";
 let analyticsCategory = "highest_alt";
+let analyticsSubview = "overview";
+let analyticsPatternType = "";
 let analyticsInitialized = false;
+let analyticsPollTimer = null;
 let analyticsPathLayer = null;
 let analyticsHistoryLayer = null;
+let analyticsPatternLayer = null;
+let analyticsCharts = {};
 
 function getAnalyticsSearchParams() {
     return new URLSearchParams(window.location.search);
@@ -160,6 +165,67 @@ function clearAnalyticsMapLayers() {
     if (analyticsHistoryLayer) {
         analyticsHistoryLayer.getSource().clear();
     }
+    if (analyticsPatternLayer) {
+        analyticsPatternLayer.getSource().clear();
+    }
+}
+
+function isAnalyticsTabActive() {
+    const panel = document.getElementById("tab-analytics");
+    return panel && panel.classList.contains("ui-tabs-panel") && !panel.classList.contains("ui-tabs-hide");
+}
+
+function setAnalyticsSubview(view) {
+    analyticsSubview = view;
+    document.querySelectorAll("#tab-analytics .analytics-subtabs [data-aview]").forEach((b) => {
+        b.classList.toggle("active", b.dataset.aview === view);
+    });
+    document.querySelectorAll("#tab-analytics .analytics-view").forEach((el) => {
+        el.classList.toggle("active", el.id === "aview-" + view);
+    });
+    refreshAnalyticsDashboard();
+}
+
+function destroyChart(id) {
+    if (analyticsCharts[id]) {
+        analyticsCharts[id].destroy();
+        delete analyticsCharts[id];
+    }
+}
+
+function makeChart(id, type, labels, data, label) {
+    destroyChart(id);
+    const el = document.getElementById(id);
+    if (!el || typeof Chart === "undefined") {
+        return;
+    }
+    const opts = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: type === "doughnut" } },
+    };
+    if (type !== "doughnut") {
+        opts.scales = {
+            x: { ticks: { color: "#8b9cb3", maxTicksLimit: 12 } },
+            y: { ticks: { color: "#8b9cb3" }, beginAtZero: true },
+        };
+    }
+    analyticsCharts[id] = new Chart(el, {
+        type: type,
+        data: {
+            labels: labels,
+            datasets: [{
+                label: label,
+                data: data,
+                borderColor: "#3d9ae8",
+                backgroundColor: type === "doughnut"
+                    ? ["#3d9ae8", "#e8a838", "#6bcb77", "#ff6b6b", "#9b59b6", "#95a5a6"]
+                    : "rgba(61, 154, 232, 0.35)",
+                fill: type === "line",
+            }],
+        },
+        options: opts,
+    });
 }
 
 function fitAnalyticsExtent(source) {
@@ -232,7 +298,7 @@ async function loadAnalyticsMilitary() {
     }
     tbody.innerHTML = "<tr><td colspan='6'>Loading…</td></tr>";
     try {
-        const d = await analyticsApiGet("/stats/military?limit=50");
+        const d = await analyticsApiGet("/stats/military?period=" + analyticsPeriod + "&limit=50");
         tbody.innerHTML = "";
         (d.items || []).forEach((row) => {
             const t = row.time ? new Date(row.time).toLocaleString() : "—";
@@ -259,7 +325,7 @@ async function loadAnalyticsPaths() {
     const source = analyticsPathLayer.getSource();
     source.clear();
     try {
-        const geo = await analyticsApiGet("/stats/paths/top?period=" + analyticsPeriod + "&limit=80");
+        const geo = await analyticsApiGet("/stats/paths/heatmap?period=" + analyticsPeriod + "&limit=200");
         (geo.features || []).forEach((f) => {
             const [lon, lat] = f.geometry.coordinates;
             source.addFeature(new ol.Feature({
@@ -267,7 +333,6 @@ async function loadAnalyticsPaths() {
                 cnt: f.properties.crossing_count || 1,
             }));
         });
-        fitAnalyticsExtent(source);
     } catch (e) {
         setAnalyticsStatus("Paths: " + e.message);
     }
@@ -307,7 +372,11 @@ async function loadAnalyticsHistory() {
             source.addFeature(new ol.Feature({
                 geometry: new ol.geom.LineString(coords),
             }));
-            fitAnalyticsExtent(source);
+        }
+        const canvas = document.getElementById("hist_alt_canvas");
+        if (canvas && alts.length && typeof Chart !== "undefined") {
+            const labels = pts.map((p, i) => (i % Math.max(1, Math.floor(pts.length / 8)) === 0 ? i : ""));
+            makeChart("hist_alt_canvas", "line", labels, alts, "alt ft");
         }
         if (chartEl) {
             chartEl.textContent = alts.length
@@ -359,11 +428,166 @@ function setupAnalyticsTabs() {
     }
 }
 
+async function loadTrafficDashboard() {
+    try {
+        const trend = await analyticsApiGet("/stats/traffic/trends?granularity=hour&period=" + analyticsPeriod);
+        const pts = trend.points || [];
+        makeChart("chart_traffic_trend", "line", pts.map((p) => p.t.slice(5, 16)), pts.map((p) => p.distinct_icao), "aircraft");
+        const peak = await analyticsApiGet("/stats/traffic/peak-hours?period=" + analyticsPeriod);
+        const hours = peak.hours || [];
+        makeChart("chart_peak_hours", "bar", hours.map((h) => h.hour + ":00"), hours.map((h) => h.count), "count");
+        const alt = await analyticsApiGet("/stats/altitude/histogram?period=" + analyticsPeriod);
+        const bins = alt.bins || [];
+        makeChart("chart_altitude_hist", "bar", bins.map((b) => b.label), bins.map((b) => b.count), "count");
+        const night = await analyticsApiGet("/stats/overnight");
+        const tbody = document.getElementById("overnight_body");
+        if (tbody) {
+            tbody.innerHTML = "";
+            (night.items || []).forEach((row) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = "<td><a class='icao-link' href='#' data-icao='" + row.icao + "'>" + row.icao.toUpperCase() + "</a></td>" +
+                    "<td>" + (row.first_seen ? new Date(row.first_seen).toLocaleTimeString() : "—") + "</td>" +
+                    "<td>" + (row.last_seen ? new Date(row.last_seen).toLocaleTimeString() : "—") + "</td>" +
+                    "<td>" + (row.callsign || "—") + "</td>";
+                tbody.appendChild(tr);
+            });
+        }
+    } catch (e) {
+        setAnalyticsStatus("Traffic: " + e.message);
+    }
+}
+
+async function loadSpecialDashboard() {
+    try {
+        const roles = await analyticsApiGet("/stats/military/by-role?period=" + analyticsPeriod);
+        const r = roles.roles || [];
+        makeChart("chart_mil_role", "doughnut", r.map((x) => x.role), r.map((x) => x.count), "sightings");
+        const priv = await analyticsApiGet("/stats/privacy?period=" + analyticsPeriod);
+        const tbodyP = document.getElementById("privacy_body");
+        if (tbodyP) {
+            tbodyP.innerHTML = "";
+            (priv.items || []).forEach((row) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = "<td>" + new Date(row.time).toLocaleString() + "</td><td><a class='icao-link' href='#' data-icao='" + row.icao + "'>" + row.icao.toUpperCase() + "</a></td><td>" + row.flag + "</td><td>" + (row.callsign || "—") + "</td>";
+                tbodyP.appendChild(tr);
+            });
+        }
+        const sq = await analyticsApiGet("/stats/alerts/squawk?period=" + analyticsPeriod);
+        const tbodyS = document.getElementById("squawk_body");
+        if (tbodyS) {
+            tbodyS.innerHTML = "";
+            (sq.items || []).forEach((row) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = "<td>" + row.squawk + "</td><td>" + new Date(row.started_at).toLocaleString() + "</td><td><a class='icao-link' href='#' data-icao='" + row.icao + "'>" + row.icao.toUpperCase() + "</a></td><td>" + (row.callsign || "—") + "</td>";
+                tbodyS.appendChild(tr);
+            });
+        }
+        const gov = await analyticsApiGet("/stats/government?period=" + analyticsPeriod);
+        const tbodyG = document.getElementById("government_body");
+        if (tbodyG) {
+            tbodyG.innerHTML = "";
+            (gov.items || []).forEach((row) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = "<td>" + new Date(row.time).toLocaleString() + "</td><td><a class='icao-link' href='#' data-icao='" + row.icao + "'>" + row.icao.toUpperCase() + "</a></td><td>" + (row.agency || row.country || "—") + "</td><td>" + (row.callsign || "—") + "</td>";
+                tbodyG.appendChild(tr);
+            });
+        }
+    } catch (e) {
+        setAnalyticsStatus("Special: " + e.message);
+    }
+}
+
+async function loadPatternsDashboard() {
+    try {
+        const sum = await analyticsApiGet("/stats/patterns/summary?period=" + analyticsPeriod);
+        const cards = document.getElementById("pattern_summary_cards");
+        if (cards) {
+            cards.innerHTML = "";
+            Object.keys(sum.summary || {}).forEach((k) => {
+                const d = document.createElement("div");
+                d.className = "card";
+                d.innerHTML = "<div class='label'>" + k + "</div><div class='value'>" + sum.summary[k] + "</div>";
+                cards.appendChild(d);
+            });
+        }
+        const q = analyticsPatternType ? "&type=" + analyticsPatternType : "";
+        const d = await analyticsApiGet("/stats/patterns?period=" + analyticsPeriod + q + "&limit=50");
+        const tbody = document.getElementById("patterns_body");
+        if (tbody) {
+            tbody.innerHTML = "";
+            (d.items || []).forEach((row) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = "<td>" + new Date(row.started_at).toLocaleString() + "</td><td>" + row.pattern_type + "</td><td><a class='icao-link' href='#' data-icao='" + row.icao + "'>" + row.icao.toUpperCase() + "</a></td><td>" + Math.round((row.confidence || 0) * 100) + "%</td><td><button type='button' class='analytics-btn pattern-map-btn' data-id='" + row.id + "'>Map</button></td>";
+                tbody.appendChild(tr);
+            });
+        }
+        const rep = await analyticsApiGet("/stats/patterns/repeat-visits?period=" + analyticsPeriod);
+        const tbodyR = document.getElementById("repeat_body");
+        if (tbodyR) {
+            tbodyR.innerHTML = "";
+            (rep.items || []).forEach((row) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = "<td><a class='icao-link' href='#' data-icao='" + row.icao + "'>" + row.icao.toUpperCase() + "</a></td><td>" + row.visit_count + "</td><td>" + row.dow + "</td><td>" + row.hour_bucket + "</td><td><button type='button' class='analytics-btn repeat-map-btn' data-icao='" + row.icao + "'>Map</button></td>";
+                tbodyR.appendChild(tr);
+            });
+        }
+    } catch (e) {
+        setAnalyticsStatus("Patterns: " + e.message);
+    }
+}
+
 function refreshAnalyticsDashboard() {
-    loadAnalyticsOverview();
-    loadAnalyticsLeaderboard(analyticsCategory);
-    loadAnalyticsMilitary();
-    loadAnalyticsPaths();
+    if (!isAnalyticsTabActive()) {
+        return;
+    }
+    if (analyticsSubview === "overview") {
+        loadAnalyticsOverview();
+        loadAnalyticsLeaderboard(analyticsCategory);
+        loadAnalyticsMilitary();
+        loadAnalyticsPaths();
+    } else if (analyticsSubview === "traffic") {
+        loadTrafficDashboard();
+    } else if (analyticsSubview === "special") {
+        loadSpecialDashboard();
+    } else if (analyticsSubview === "patterns") {
+        loadPatternsDashboard();
+    }
+}
+
+function ensureAnalyticsPatternLayer() {
+    if (analyticsPatternLayer || typeof OLMap === "undefined" || !OLMap) {
+        return;
+    }
+    analyticsPatternLayer = new ol.layer.Vector({
+        source: new ol.source.Vector(),
+        zIndex: 177,
+        properties: { name: "analyticsPattern" },
+        style: new ol.style.Style({
+            stroke: new ol.style.Stroke({ color: "#e8a838", width: 3 }),
+        }),
+    });
+    OLMap.addLayer(analyticsPatternLayer);
+}
+
+async function loadPatternOnMap(eventId) {
+    ensureAnalyticsPatternLayer();
+    if (!analyticsPatternLayer) {
+        return;
+    }
+    const source = analyticsPatternLayer.getSource();
+    source.clear();
+    try {
+        const d = await analyticsApiGet("/stats/patterns/" + eventId);
+        const coords = (d.track && d.track.geometry && d.track.geometry.coordinates) || [];
+        if (coords.length) {
+            source.addFeature(new ol.Feature({
+                geometry: new ol.geom.LineString(coords.map((c) => ol.proj.fromLonLat([c[0], c[1]]))),
+            }));
+        }
+        selectPlaneFromAnalytics(d.icao);
+    } catch (e) {
+        setAnalyticsStatus("Pattern: " + e.message);
+    }
 }
 
 function initAnalyticsUI() {
@@ -374,8 +598,50 @@ function initAnalyticsUI() {
     applyAnalyticsUrlState(root);
     analyticsInitialized = true;
     setupAnalyticsTabs();
+    root.querySelectorAll("[data-aview]").forEach((btn) => {
+        btn.addEventListener("click", () => setAnalyticsSubview(btn.dataset.aview));
+    });
+    root.querySelectorAll("#pattern_type_tabs [data-ptype]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            root.querySelectorAll("#pattern_type_tabs [data-ptype]").forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            analyticsPatternType = btn.dataset.ptype || "";
+            loadPatternsDashboard();
+        });
+    });
+    jQuery(root).on("click", ".pattern-map-btn", function () {
+        loadPatternOnMap(jQuery(this).data("id"));
+    });
+    jQuery(root).on("click", ".repeat-map-btn", function () {
+        const icao = jQuery(this).data("icao");
+        document.getElementById("hist_icao").value = icao;
+        setAnalyticsSubview("overview");
+        loadAnalyticsHistory();
+    });
+    const heatLoad = document.getElementById("heatmap_load");
+    if (heatLoad) {
+        heatLoad.addEventListener("click", loadAnalyticsPaths);
+    }
+    const heatFit = document.getElementById("heatmap_fit");
+    if (heatFit) {
+        heatFit.addEventListener("click", () => {
+            if (analyticsPathLayer) {
+                fitAnalyticsExtent(analyticsPathLayer.getSource());
+            }
+        });
+    }
+    const histFit = document.getElementById("hist_fit_map");
+    if (histFit) {
+        histFit.addEventListener("click", () => {
+            if (analyticsHistoryLayer) {
+                fitAnalyticsExtent(analyticsHistoryLayer.getSource());
+            }
+        });
+    }
     refreshAnalyticsDashboard();
-    setInterval(refreshAnalyticsDashboard, 60000);
+    if (!analyticsPollTimer) {
+        analyticsPollTimer = setInterval(refreshAnalyticsDashboard, 60000);
+    }
 }
 
 function openAnalyticsTab() {

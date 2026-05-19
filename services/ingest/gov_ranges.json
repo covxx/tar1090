@@ -1,0 +1,6 @@
+[
+  {"range_start": "ADF7C0", "range_end": "AFFFFF", "country": "United States", "agency": "US Government"},
+  {"range_start": "AE0000", "range_end": "AEFFFF", "country": "United States", "agency": "US Military/Gov"},
+  {"range_start": "400000", "range_end": "43FFFF", "country": "United Kingdom", "agency": "UK Government"},
+  {"range_start": "3C0000", "range_end": "3FFFFF", "country": "Germany", "agency": "DE Government"}
+]

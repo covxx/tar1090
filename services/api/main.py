@@ -11,15 +11,28 @@ from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from queries import (
+    altitude_histogram,
+    behavior_event_detail,
+    behavior_events_list,
+    government_list,
     history_positions,
     leaderboard_fastest,
     leaderboard_from_records,
     leaderboard_highest_alt,
     leaderboard_size,
+    military_by_role,
     military_sightings,
+    overnight_list,
     overview_stats,
+    paths_heatmap,
+    patterns_summary,
+    peak_hours,
     period_start,
+    privacy_sightings_list,
+    repeat_visits_list,
+    squawk_alerts_list,
     top_paths,
+    traffic_trends,
 )
 
 DATABASE_URL = os.environ.get(
@@ -206,11 +219,12 @@ def stats_paths_top(period: str = Query("week"), limit: int = Query(50, ge=1, le
 
 @app.get("/stats/military")
 def stats_military(
+    period: str = Query("week"),
     from_ts: Optional[str] = None,
     to_ts: Optional[str] = None,
     limit: int = Query(100, ge=1, le=500),
 ):
-    since = datetime.fromisoformat(from_ts) if from_ts else period_start("week")
+    since = datetime.fromisoformat(from_ts) if from_ts else period_start(period)
     until = datetime.fromisoformat(to_ts) if to_ts else datetime.now(timezone.utc)
     if since.tzinfo is None:
         since = since.replace(tzinfo=timezone.utc)
@@ -309,3 +323,185 @@ async def photo_proxy(icao: str, response: Response):
         raise HTTPException(404, "Photo not found")
 
     return Response(status_code=302, headers={"Location": thumb_url})
+
+
+@app.get("/stats/traffic/trends")
+def api_traffic_trends(
+    granularity: str = Query("hour"),
+    period: str = Query("week"),
+):
+    cache_key = ("traffic_trends", granularity, period)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+    since = period_start(period)
+    conn = get_conn()
+    try:
+        data = {"granularity": granularity, "points": traffic_trends(conn, granularity, since)}
+    finally:
+        conn.close()
+    _cache_set(cache_key, data)
+    return data
+
+
+@app.get("/stats/traffic/peak-hours")
+def api_peak_hours(period: str = Query("month"), tz: str = Query("UTC")):
+    cache_key = ("peak_hours", period, tz)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+    since = period_start(period)
+    conn = get_conn()
+    try:
+        data = {"hours": peak_hours(conn, since, tz)}
+    finally:
+        conn.close()
+    _cache_set(cache_key, data)
+    return data
+
+
+@app.get("/stats/paths/heatmap")
+def api_paths_heatmap(period: str = Query("week"), limit: int = Query(200, ge=1, le=1000)):
+    cache_key = ("paths_heatmap", period, limit)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+    since = period_start(period)
+    conn = get_conn()
+    try:
+        data = paths_heatmap(conn, since, limit)
+    finally:
+        conn.close()
+    _cache_set(cache_key, data)
+    return data
+
+
+@app.get("/stats/altitude/histogram")
+def api_altitude_histogram(period: str = Query("day")):
+    cache_key = ("alt_hist", period)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+    since = period_start(period)
+    conn = get_conn()
+    try:
+        data = altitude_histogram(conn, since)
+    finally:
+        conn.close()
+    _cache_set(cache_key, data)
+    return data
+
+
+@app.get("/stats/overnight")
+def api_overnight(night: Optional[str] = None):
+    from datetime import date
+    night_date = date.fromisoformat(night) if night else date.today()
+    conn = get_conn()
+    try:
+        items = overnight_list(conn, night_date)
+    finally:
+        conn.close()
+    return {"night": str(night_date), "items": items}
+
+
+@app.get("/stats/military/by-role")
+def api_military_by_role(period: str = Query("week")):
+    cache_key = ("mil_role", period)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+    since = period_start(period)
+    conn = get_conn()
+    try:
+        data = {"roles": military_by_role(conn, since)}
+    finally:
+        conn.close()
+    _cache_set(cache_key, data)
+    return data
+
+
+@app.get("/stats/privacy")
+def api_privacy(flag: Optional[str] = None, period: str = Query("week"), limit: int = Query(100, ge=1, le=500)):
+    since = period_start(period)
+    conn = get_conn()
+    try:
+        items = privacy_sightings_list(conn, flag, since, limit)
+    finally:
+        conn.close()
+    return {"items": items}
+
+
+@app.get("/stats/alerts/squawk")
+def api_squawk_alerts(
+    code: Optional[str] = None,
+    active: bool = Query(False),
+    period: str = Query("week"),
+    limit: int = Query(100, ge=1, le=500),
+):
+    since = period_start(period)
+    conn = get_conn()
+    try:
+        items = squawk_alerts_list(conn, code, active, since, limit)
+    finally:
+        conn.close()
+    return {"items": items}
+
+
+@app.get("/stats/government")
+def api_government(period: str = Query("week"), limit: int = Query(100, ge=1, le=500)):
+    since = period_start(period)
+    conn = get_conn()
+    try:
+        items = government_list(conn, since, limit)
+    finally:
+        conn.close()
+    return {"items": items}
+
+
+@app.get("/stats/patterns")
+def api_patterns(
+    type: Optional[str] = None,
+    period: str = Query("week"),
+    limit: int = Query(50, ge=1, le=200),
+):
+    since = period_start(period)
+    conn = get_conn()
+    try:
+        items = behavior_events_list(conn, type, since, limit)
+    finally:
+        conn.close()
+    return {"items": items}
+
+
+@app.get("/stats/patterns/summary")
+def api_patterns_summary(period: str = Query("week")):
+    since = period_start(period)
+    conn = get_conn()
+    try:
+        summary = patterns_summary(conn, since)
+    finally:
+        conn.close()
+    return {"summary": summary}
+
+
+@app.get("/stats/patterns/repeat-visits")
+def api_repeat_visits(period: str = Query("month"), min_visits: int = Query(3, ge=2, le=20)):
+    since = period_start(period)
+    conn = get_conn()
+    try:
+        items = repeat_visits_list(conn, since, min_visits)
+    finally:
+        conn.close()
+    return {"items": items}
+
+
+@app.get("/stats/patterns/{event_id}")
+def api_pattern_detail(event_id: int):
+    conn = get_conn()
+    try:
+        detail = behavior_event_detail(conn, event_id)
+    finally:
+        conn.close()
+    if not detail:
+        raise HTTPException(404, "Event not found")
+    return detail

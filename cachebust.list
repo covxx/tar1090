@@ -9,6 +9,7 @@ markers.js
 planeObject.js
 script.js
 analytics.js
+chart.umd.min.js
 registrations.js
 style.css
 analytics.css

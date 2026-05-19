@@ -41,14 +41,30 @@ def get_conn():
         conn.close()
 
 
+def _run_sql_file(conn, path: str) -> None:
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8") as f:
+        sql = f.read()
+    for stmt in sql.split(";"):
+        stmt = stmt.strip()
+        if stmt and not stmt.startswith("--"):
+            try:
+                conn.run(stmt)
+            except Exception:
+                pass
+
+
 def init_schema():
     schema_path = os.environ.get("SCHEMA_PATH", "/app/schema.sql")
     if not os.path.isfile(schema_path):
-        schema_path = os.path.join(os.path.dirname(__file__), "..", "schema.sql")
-    with open(schema_path, encoding="utf-8") as f:
-        sql = f.read()
+        schema_path = os.path.join(os.path.dirname(__file__), "..", "schema-plain.sql")
+    v2_path = os.path.join(os.path.dirname(schema_path), "schema-v2.sql")
+    if not os.path.isfile(v2_path):
+        v2_path = os.path.join(os.path.dirname(__file__), "..", "schema-v2.sql")
     with get_conn() as conn:
-        conn.run(sql)
+        _run_sql_file(conn, schema_path)
+        _run_sql_file(conn, v2_path)
 
 
 def insert_positions(rows: list[tuple]) -> None:
@@ -91,8 +107,106 @@ def insert_military_sightings(rows: list[tuple]) -> None:
     with get_conn() as conn:
         for r in rows:
             conn.run(
-                "INSERT INTO military_sightings (time, icao, callsign, icao_type, lat, lon, alt_baro, db_flags) "
-                "VALUES (:p1,:p2,:p3,:p4,:p5,:p6,:p7,:p8)",
+                "INSERT INTO military_sightings (time, icao, callsign, icao_type, lat, lon, alt_baro, db_flags, military_role) "
+                "VALUES (:p1,:p2,:p3,:p4,:p5,:p6,:p7,:p8,:p9)",
                 p1=r[0], p2=r[1], p3=r[2], p4=r[3],
-                p5=r[4], p6=r[5], p7=r[6], p8=r[7],
+                p5=r[4], p6=r[5], p7=r[6], p8=r[7], p9=r[8] if len(r) > 8 else None,
+            )
+
+
+def insert_session(row: tuple) -> None:
+    with get_conn() as conn:
+        conn.run(
+            "INSERT INTO sessions (icao, first_seen, last_seen, max_alt, distance_nm, is_military, "
+            "callsign, icao_type, point_count, track_length_nm, max_radius_nm, centroid_lat, centroid_lon, closed) "
+            "VALUES (:icao,:fs,:ls,:ma,:dn,:mil,:cs,:it,:pc,:tl,:mr,:clat,:clon,TRUE) "
+            "ON CONFLICT (icao, first_seen) DO NOTHING",
+            icao=row[0], fs=row[1], ls=row[2], ma=row[3], dn=row[4], mil=row[5],
+            cs=row[6], it=row[7], pc=row[8], tl=row[9], mr=row[10],
+            clat=row[11], clon=row[12],
+        )
+
+
+def insert_privacy_sightings(rows: list[tuple]) -> None:
+    if not rows:
+        return
+    with get_conn() as conn:
+        for r in rows:
+            conn.run(
+                "INSERT INTO privacy_sightings (time, icao, flag, callsign, lat, lon, db_flags) "
+                "VALUES (:p1,:p2,:p3,:p4,:p5,:p6,:p7)",
+                p1=r[0], p2=r[1], p3=r[2], p4=r[3], p5=r[4], p6=r[5], p7=r[6],
+            )
+
+
+def insert_government_sightings(rows: list[tuple]) -> None:
+    if not rows:
+        return
+    with get_conn() as conn:
+        for r in rows:
+            conn.run(
+                "INSERT INTO government_sightings (time, icao, country, agency, callsign, lat, lon, alt_baro) "
+                "VALUES (:p1,:p2,:p3,:p4,:p5,:p6,:p7,:p8)",
+                p1=r[0], p2=r[1], p3=r[2], p4=r[3], p5=r[4], p6=r[5], p7=r[6], p8=r[7],
+            )
+
+
+def upsert_squawk_alert(icao: str, squawk: str, started_at, callsign, icao_type, lat, lon, is_military: bool):
+    with get_conn() as conn:
+        conn.run(
+            "INSERT INTO squawk_alerts (icao, squawk, started_at, callsign, icao_type, last_lat, last_lon, is_military) "
+            "VALUES (:icao,:sq,:st,:cs,:it,:lat,:lon,:mil)",
+            icao=icao, sq=squawk, st=started_at, cs=callsign, it=icao_type,
+            lat=lat, lon=lon, mil=is_military,
+        )
+
+
+def update_squawk_alert(alert_id: int, lat, lon, callsign):
+    with get_conn() as conn:
+        conn.run(
+            "UPDATE squawk_alerts SET last_lat=:lat, last_lon=:lon, callsign=COALESCE(:cs, callsign) WHERE id=:id",
+            lat=lat, lon=lon, cs=callsign, id=alert_id,
+        )
+
+
+def close_squawk_alerts(icao: str, squawk: str | None, ended_at):
+    with get_conn() as conn:
+        if squawk:
+            conn.run(
+                "UPDATE squawk_alerts SET ended_at=:ea WHERE icao=:icao AND squawk=:sq AND ended_at IS NULL",
+                ea=ended_at, icao=icao, sq=squawk,
+            )
+        else:
+            conn.run(
+                "UPDATE squawk_alerts SET ended_at=:ea WHERE icao=:icao AND ended_at IS NULL",
+                ea=ended_at, icao=icao,
+            )
+
+
+def get_active_squawk_alert(icao: str, squawk: str):
+    with get_conn() as conn:
+        rows = conn.run(
+            "SELECT id FROM squawk_alerts WHERE icao=:icao AND squawk=:sq AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1",
+            icao=icao, sq=squawk,
+        )
+        return rows[0][0] if rows else None
+
+
+def seed_gov_ranges(rows: list[tuple]) -> None:
+    with get_conn() as conn:
+        for r in rows:
+            conn.run(
+                "INSERT INTO gov_hex_ranges (range_start, range_end, country, agency) "
+                "VALUES (:a,:b,:c,:ag) ON CONFLICT (range_start, range_end) DO NOTHING",
+                a=r[0], b=r[1], c=r[2], ag=r[3],
+            )
+
+
+def seed_military_type_map(rows: list[tuple]) -> None:
+    with get_conn() as conn:
+        for r in rows:
+            conn.run(
+                "INSERT INTO military_type_map (icao_type, role) VALUES (:t,:role) "
+                "ON CONFLICT (icao_type) DO UPDATE SET role=EXCLUDED.role",
+                t=r[0], role=r[1],
             )
