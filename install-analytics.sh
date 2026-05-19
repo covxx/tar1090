@@ -1,6 +1,6 @@
 #!/bin/bash
 # Native analytics install (no Docker) — Ubuntu/Debian
-# PostgreSQL driver: apt python3-psycopg2 only (never pip psycopg2-binary on native).
+# Strategy: apt for psycopg2, system-wide pip for the rest. No venv, no --target, no PYTHONPATH.
 set -e
 trap 'echo "[ERROR] install-analytics.sh line $LINENO: $BASH_COMMAND"' ERR
 
@@ -19,95 +19,85 @@ if ! command -v apt-get &>/dev/null; then
 fi
 
 PYTHON3="$(command -v python3)"
-PYLIB="$ipath/analytics-lib"
 
 echo "--------------"
 echo "Installing tar1090 analytics (native)..."
 echo "Python: $PYTHON3 ($($PYTHON3 --version 2>&1))"
 
 apt_install() {
-    apt-get install -y --no-install-recommends "$@" || {
+    apt-get install -y --no-install-recommends "$@" 2>/dev/null || {
         apt-get update || true
         apt-get install -y --no-install-recommends "$@"
     }
 }
 
-# psycopg2 from apt — avoids pip wheel/source builds entirely
+# ---- System packages ----
 apt_install postgresql postgresql-client python3 python3-pip python3-psycopg2
 
+# Remove any previously pip-installed psycopg2-binary to prevent conflicts
+"$PYTHON3" -m pip uninstall -y psycopg2-binary 2>/dev/null || true
+"$PYTHON3" -m pip uninstall -y psycopg2 2>/dev/null || true
+
+# Verify apt psycopg2 works
 if ! "$PYTHON3" -c "import psycopg2" 2>/dev/null; then
-    echo "FATAL: python3-psycopg2 installed but not importable by $PYTHON3"
-    echo "  Check: $PYTHON3 -c 'import psycopg2'"
+    echo "FATAL: python3-psycopg2 not importable by $PYTHON3"
     exit 1
 fi
 echo "psycopg2 (apt): $("$PYTHON3" -c 'import psycopg2; print(psycopg2.__file__)')"
 
+# ---- PostgreSQL setup ----
 systemctl enable postgresql
 systemctl start postgresql
-
 sudo -u postgres psql -v ON_ERROR_STOP=0 -c "CREATE USER tar1090 WITH PASSWORD 'tar1090';" 2>/dev/null || true
 sudo -u postgres psql -v ON_ERROR_STOP=0 -c "CREATE DATABASE tar1090 OWNER tar1090;" 2>/dev/null || true
 sudo -u postgres psql -v ON_ERROR_STOP=0 -c "GRANT ALL PRIVILEGES ON DATABASE tar1090 TO tar1090;" 2>/dev/null || true
 
+# ---- Copy service files ----
 analytics_dir="$ipath/analytics"
 mkdir -p "$analytics_dir/ingest" "$analytics_dir/api" "$analytics_dir/jobs"
 mkdir -p /var/lib/tar1090/photo-cache
-mkdir -p "$PYLIB"
 
 cp "$git_dir/services/ingest/"*.py "$analytics_dir/ingest/"
-cp "$git_dir/services/api/"*.py "$analytics_dir/api/"
-cp "$git_dir/services/jobs/"*.py "$analytics_dir/jobs/"
+cp "$git_dir/services/api/"*.py   "$analytics_dir/api/"
+cp "$git_dir/services/jobs/"*.py  "$analytics_dir/jobs/"
 cp "$git_dir/services/schema-plain.sql" "$analytics_dir/schema-plain.sql"
 
-# Clean stale analytics-lib that may contain psycopg2-binary from older installs
-rm -rf "$PYLIB" "$ipath/analytics-venv"
-mkdir -p "$PYLIB"
+# ---- Clean old --target lib dir and venv from previous installs ----
+rm -rf "$ipath/analytics-lib" "$ipath/analytics-venv"
 
-# Build the pip requirements inline — never include psycopg2 in any form
-cat > "$analytics_dir/requirements-native.txt" <<'EOF'
-geohash2==1.1.0
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-httpx==0.27.2
-EOF
+# ---- Install pip packages system-wide (NO psycopg2) ----
+echo "Installing fastapi/uvicorn/httpx/geohash2 system-wide via pip ..."
+"$PYTHON3" -m pip install --break-system-packages \
+    "fastapi==0.115.0" \
+    "uvicorn[standard]==0.30.6" \
+    "httpx==0.27.2" \
+    "geohash2==1.1.0" \
+    2>&1 || {
+        echo "pip with --break-system-packages failed, trying without ..."
+        "$PYTHON3" -m pip install \
+            "fastapi==0.115.0" \
+            "uvicorn[standard]==0.30.6" \
+            "httpx==0.27.2" \
+            "geohash2==1.1.0"
+    }
 
-pip_install_target() {
-    if "$PYTHON3" -m pip install --target "$PYLIB" --no-deps "$@" 2>/dev/null; then
-        return 0
-    fi
-    if "$PYTHON3" -m pip install --target "$PYLIB" "$@" 2>/dev/null; then
-        return 0
-    fi
-    echo "pip install --target failed; retrying with --break-system-packages ..."
-    "$PYTHON3" -m pip install --break-system-packages --target "$PYLIB" "$@"
-}
-
-echo "Installing Python packages (no psycopg2 via pip) into $PYLIB ..."
-"$PYTHON3" -m pip install --upgrade pip 2>/dev/null || true
-pip_install_target -r "$analytics_dir/requirements-native.txt"
-
-# PYLIB for fastapi/uvicorn; psycopg2 stays on system site-packages
-PYTHONPATH_EXTRA="$PYLIB"
-export PYTHONPATH="$PYTHONPATH_EXTRA"
-
+# ---- Verify imports ----
 if ! "$PYTHON3" -c "import psycopg2" 2>/dev/null; then
-    echo "FATAL: psycopg2 not importable after install."
+    echo "FATAL: psycopg2 not importable."
     exit 1
 fi
-if ! "$PYTHON3" -c "import fastapi, uvicorn, geohash2" 2>/dev/null; then
-    echo "FATAL: analytics pip packages not importable with PYTHONPATH=$PYTHONPATH"
-    "$PYTHON3" -m pip install --target "$PYLIB" -r "$REQ_NATIVE" -v || true
+if ! "$PYTHON3" -c "import fastapi, uvicorn" 2>/dev/null; then
+    echo "FATAL: fastapi/uvicorn not importable."
     exit 1
 fi
-echo "Analytics Python deps OK (psycopg2=apt, rest=pip -> $PYLIB)"
+echo "All Python deps OK."
 
-chown -R tar1090:tar1090 "$PYLIB" "$analytics_dir" /var/lib/tar1090/photo-cache 2>/dev/null || true
-chmod -R a+rX "$PYLIB" 2>/dev/null || true
-
+# ---- Apply schema ----
 export PGPASSWORD=tar1090
 psql -h 127.0.0.1 -U tar1090 -d tar1090 -f "$analytics_dir/schema-plain.sql" 2>/dev/null || \
     sudo -u postgres psql -d tar1090 -f "$analytics_dir/schema-plain.sql"
 
+# ---- Env file (no PYTHONPATH needed) ----
 db_path=""
 for d in "$ipath"/html/db-* "$ipath"/html-*/db-*; do
     [[ -d "$d" ]] && db_path="$d" && break
@@ -117,7 +107,6 @@ aircraft_json="$srcdir/aircraft.json"
 [[ -f "$aircraft_json" ]] || aircraft_json="/run/readsb/aircraft.json"
 
 cat > /etc/default/tar1090-analytics <<EOF
-PYTHONPATH=$PYTHONPATH_EXTRA
 DATABASE_URL=postgresql://tar1090:tar1090@127.0.0.1/tar1090
 AIRCRAFT_JSON=$aircraft_json
 TAR1090_DB_PATH=${db_path:-$ipath/html/db2}
@@ -129,6 +118,7 @@ JOB_INTERVAL=3600
 EOF
 chmod 644 /etc/default/tar1090-analytics
 
+# ---- Systemd services ----
 cp "$git_dir/tar1090-analytics-api.service" /lib/systemd/system/
 cp "$git_dir/tar1090-analytics-ingest.service" /lib/systemd/system/
 cp "$git_dir/tar1090-analytics-jobs.service" /lib/systemd/system/
@@ -138,5 +128,4 @@ systemctl enable tar1090-analytics-api tar1090-analytics-ingest tar1090-analytic
 systemctl restart tar1090-analytics-api tar1090-analytics-ingest tar1090-analytics-jobs || true
 
 echo "Analytics API: http://127.0.0.1:9056/health"
-echo "Test: sudo -u tar1090 env PYTHONPATH=$PYTHONPATH_EXTRA $PYTHON3 -c 'import psycopg2, fastapi; print(\"ok\")'"
 echo "--------------"
