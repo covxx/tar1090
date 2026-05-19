@@ -1,3 +1,5 @@
+# Native install uses apt python3-psycopg2 + services/requirements-native.txt (no pip psycopg2).
+# Docker / venv: psycopg2-binary
 psycopg2-binary==2.9.9
 geohash2==1.1.0
 fastapi==0.115.0

@@ -1,5 +1,6 @@
 #!/bin/bash
 # Native analytics install (no Docker) — Ubuntu/Debian
+# PostgreSQL driver: apt python3-psycopg2 only (never pip psycopg2-binary on native).
 set -e
 trap 'echo "[ERROR] install-analytics.sh line $LINENO: $BASH_COMMAND"' ERR
 
@@ -24,14 +25,22 @@ echo "--------------"
 echo "Installing tar1090 analytics (native)..."
 echo "Python: $PYTHON3 ($($PYTHON3 --version 2>&1))"
 
-apt-get install -y --no-install-recommends \
-    postgresql postgresql-client \
-    python3 python3-pip python3-venv python3-dev \
-    libpq-dev \
-    || { apt-get update || true; apt-get install -y --no-install-recommends postgresql postgresql-client python3 python3-pip python3-dev libpq-dev; }
+apt_install() {
+    apt-get install -y --no-install-recommends "$@" || {
+        apt-get update || true
+        apt-get install -y --no-install-recommends "$@"
+    }
+}
 
-# Optional apt psycopg2 (adds dist-packages path for PYTHONPATH fallback)
-apt-get install -y --no-install-recommends python3-psycopg2 2>/dev/null || true
+# psycopg2 from apt — avoids pip wheel/source builds entirely
+apt_install postgresql postgresql-client python3 python3-pip python3-psycopg2
+
+if ! "$PYTHON3" -c "import psycopg2" 2>/dev/null; then
+    echo "FATAL: python3-psycopg2 installed but not importable by $PYTHON3"
+    echo "  Check: $PYTHON3 -c 'import psycopg2'"
+    exit 1
+fi
+echo "psycopg2 (apt): $("$PYTHON3" -c 'import psycopg2; print(psycopg2.__file__)')"
 
 systemctl enable postgresql
 systemctl start postgresql
@@ -50,44 +59,47 @@ cp "$git_dir/services/api/"*.py "$analytics_dir/api/"
 cp "$git_dir/services/jobs/"*.py "$analytics_dir/jobs/"
 cp "$git_dir/services/schema-plain.sql" "$analytics_dir/schema-plain.sql"
 cp "$git_dir/services/requirements.txt" "$analytics_dir/requirements.txt"
-[[ -f "$git_dir/services/requirements-native.txt" ]] && \
-    cp "$git_dir/services/requirements-native.txt" "$analytics_dir/requirements-native.txt"
 
-# Drop old venv (source of psycopg2 import failures)
+REQ_NATIVE="$analytics_dir/requirements-native.txt"
+if [[ -f "$git_dir/services/requirements-native.txt" ]]; then
+    cp "$git_dir/services/requirements-native.txt" "$REQ_NATIVE"
+else
+    cat > "$REQ_NATIVE" <<'EOF'
+geohash2==1.1.0
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+httpx==0.27.2
+EOF
+fi
+
 rm -rf "$ipath/analytics-venv"
 
-# Install all Python deps into a single lib dir (no venv — same python3 as systemd)
-echo "Installing Python packages into $PYLIB ..."
-"$PYTHON3" -m pip install --upgrade pip wheel setuptools 2>/dev/null || true
-
-if ! "$PYTHON3" -m pip install --target "$PYLIB" -r "$analytics_dir/requirements.txt"; then
-    echo "pip install --target failed; trying with --break-system-packages ..."
-    "$PYTHON3" -m pip install --break-system-packages --target "$PYLIB" -r "$analytics_dir/requirements.txt"
-fi
-
-# Build PYTHONPATH: our libs + system dist-packages (for apt python3-psycopg2 fallback)
-PYTHONPATH_EXTRA="$PYLIB"
-if "$PYTHON3" -c "import psycopg2" 2>/dev/null; then
-    SITE=$("$PYTHON3" -c "import site; print(site.getsitepackages()[0] if site.getsitepackages() else '')" 2>/dev/null || true)
-    if [[ -n "$SITE" && -d "$SITE" ]]; then
-        PYTHONPATH_EXTRA="$PYLIB:$SITE"
+pip_install_target() {
+    if "$PYTHON3" -m pip install --target "$PYLIB" "$@"; then
+        return 0
     fi
-fi
+    echo "pip install --target failed; retrying with --break-system-packages ..."
+    "$PYTHON3" -m pip install --break-system-packages --target "$PYLIB" "$@"
+}
 
+echo "Installing Python packages (no psycopg2 via pip) into $PYLIB ..."
+"$PYTHON3" -m pip install --upgrade pip wheel setuptools 2>/dev/null || true
+pip_install_target -r "$REQ_NATIVE"
+
+# PYLIB for fastapi/uvicorn; psycopg2 stays on system site-packages
+PYTHONPATH_EXTRA="$PYLIB"
 export PYTHONPATH="$PYTHONPATH_EXTRA"
 
 if ! "$PYTHON3" -c "import psycopg2" 2>/dev/null; then
-    echo "FATAL: psycopg2 not importable."
-    echo "  PYTHONPATH=$PYTHONPATH"
-    echo "  Try: sudo $PYTHON3 -m pip install --target $PYLIB psycopg2-binary"
+    echo "FATAL: psycopg2 not importable after install."
     exit 1
 fi
-echo "psycopg2 OK: $("$PYTHON3" -c 'import psycopg2; print(psycopg2.__file__)')"
-
-if ! "$PYTHON3" -c "import fastapi, uvicorn" 2>/dev/null; then
-    echo "FATAL: fastapi/uvicorn not importable with PYTHONPATH=$PYTHONPATH"
+if ! "$PYTHON3" -c "import fastapi, uvicorn, geohash2" 2>/dev/null; then
+    echo "FATAL: analytics pip packages not importable with PYTHONPATH=$PYTHONPATH"
+    "$PYTHON3" -m pip install --target "$PYLIB" -r "$REQ_NATIVE" -v || true
     exit 1
 fi
+echo "Analytics Python deps OK (psycopg2=apt, rest=pip -> $PYLIB)"
 
 chown -R tar1090:tar1090 "$PYLIB" "$analytics_dir" /var/lib/tar1090/photo-cache 2>/dev/null || true
 chmod -R a+rX "$PYLIB" 2>/dev/null || true
@@ -126,5 +138,5 @@ systemctl enable tar1090-analytics-api tar1090-analytics-ingest tar1090-analytic
 systemctl restart tar1090-analytics-api tar1090-analytics-ingest tar1090-analytics-jobs || true
 
 echo "Analytics API: http://127.0.0.1:9056/health"
-echo "Test: sudo -u tar1090 env PYTHONPATH=$PYTHONPATH_EXTRA $PYTHON3 -c 'import psycopg2; print(\"ok\")'"
+echo "Test: sudo -u tar1090 env PYTHONPATH=$PYTHONPATH_EXTRA $PYTHON3 -c 'import psycopg2, fastapi; print(\"ok\")'"
 echo "--------------"

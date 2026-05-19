@@ -41,11 +41,11 @@ systemctl status tar1090-analytics-api tar1090-analytics-ingest tar1090-analytic
 curl -s http://127.0.0.1:9056/health
 ```
 
-Python deps live in `/usr/local/share/tar1090/analytics-lib` (no venv). `PYTHONPATH` is set in `/etc/default/tar1090-analytics`.
+Python deps: **psycopg2 from apt** (`python3-psycopg2`), everything else via pip into `/usr/local/share/tar1090/analytics-lib` (no venv, no `psycopg2-binary` wheel build). `PYTHONPATH` is set in `/etc/default/tar1090-analytics`.
 
 ```bash
 source /etc/default/tar1090-analytics
-python3 -c "import psycopg2; print('ok')"
+python3 -c "import psycopg2, fastapi; print('ok')"
 ```
 
 ## Configuration
