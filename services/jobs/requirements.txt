@@ -1,2 +1,2 @@
-psycopg2-binary==2.9.9
+pg8000>=1.31.2
 geohash2==1.1.0

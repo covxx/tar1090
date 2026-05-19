@@ -1,6 +1,6 @@
 #!/bin/bash
 # Native analytics install (no Docker) — Ubuntu/Debian
-# Strategy: apt for psycopg2, system-wide pip for the rest. No venv, no --target, no PYTHONPATH.
+# Uses pg8000 (pure Python PostgreSQL driver) — no C compiler or libpq needed.
 set -e
 trap 'echo "[ERROR] install-analytics.sh line $LINENO: $BASH_COMMAND"' ERR
 
@@ -31,19 +31,13 @@ apt_install() {
     }
 }
 
-# ---- System packages ----
-apt_install postgresql postgresql-client python3 python3-pip python3-psycopg2
+# ---- System packages (no psycopg2, no libpq-dev, no python3-dev) ----
+apt_install postgresql postgresql-client python3 python3-pip
 
-# Remove any previously pip-installed psycopg2-binary to prevent conflicts
+# ---- Clean leftovers from previous psycopg2-based installs ----
 "$PYTHON3" -m pip uninstall -y psycopg2-binary 2>/dev/null || true
 "$PYTHON3" -m pip uninstall -y psycopg2 2>/dev/null || true
-
-# Verify apt psycopg2 works
-if ! "$PYTHON3" -c "import psycopg2" 2>/dev/null; then
-    echo "FATAL: python3-psycopg2 not importable by $PYTHON3"
-    exit 1
-fi
-echo "psycopg2 (apt): $("$PYTHON3" -c 'import psycopg2; print(psycopg2.__file__)')"
+rm -rf "$ipath/analytics-lib" "$ipath/analytics-venv"
 
 # ---- PostgreSQL setup ----
 systemctl enable postgresql
@@ -62,19 +56,18 @@ cp "$git_dir/services/api/"*.py   "$analytics_dir/api/"
 cp "$git_dir/services/jobs/"*.py  "$analytics_dir/jobs/"
 cp "$git_dir/services/schema-plain.sql" "$analytics_dir/schema-plain.sql"
 
-# ---- Clean old --target lib dir and venv from previous installs ----
-rm -rf "$ipath/analytics-lib" "$ipath/analytics-venv"
-
-# ---- Install pip packages system-wide (NO psycopg2) ----
-echo "Installing fastapi/uvicorn/httpx/geohash2 system-wide via pip ..."
+# ---- Install ALL pip packages system-wide (pure Python, no wheels to build) ----
+echo "Installing pg8000 + fastapi + uvicorn + deps via pip ..."
 "$PYTHON3" -m pip install --break-system-packages \
+    "pg8000>=1.31.2" \
     "fastapi==0.115.0" \
     "uvicorn[standard]==0.30.6" \
     "httpx==0.27.2" \
     "geohash2==1.1.0" \
     2>&1 || {
-        echo "pip with --break-system-packages failed, trying without ..."
+        echo "Retrying pip without --break-system-packages ..."
         "$PYTHON3" -m pip install \
+            "pg8000>=1.31.2" \
             "fastapi==0.115.0" \
             "uvicorn[standard]==0.30.6" \
             "httpx==0.27.2" \
@@ -82,14 +75,8 @@ echo "Installing fastapi/uvicorn/httpx/geohash2 system-wide via pip ..."
     }
 
 # ---- Verify imports ----
-if ! "$PYTHON3" -c "import psycopg2" 2>/dev/null; then
-    echo "FATAL: psycopg2 not importable."
-    exit 1
-fi
-if ! "$PYTHON3" -c "import fastapi, uvicorn" 2>/dev/null; then
-    echo "FATAL: fastapi/uvicorn not importable."
-    exit 1
-fi
+"$PYTHON3" -c "import pg8000; print('pg8000 OK:', pg8000.__version__)"
+"$PYTHON3" -c "import fastapi, uvicorn; print('fastapi+uvicorn OK')"
 echo "All Python deps OK."
 
 # ---- Apply schema ----
@@ -97,7 +84,7 @@ export PGPASSWORD=tar1090
 psql -h 127.0.0.1 -U tar1090 -d tar1090 -f "$analytics_dir/schema-plain.sql" 2>/dev/null || \
     sudo -u postgres psql -d tar1090 -f "$analytics_dir/schema-plain.sql"
 
-# ---- Env file (no PYTHONPATH needed) ----
+# ---- Env file ----
 db_path=""
 for d in "$ipath"/html/db-* "$ipath"/html-*/db-*; do
     [[ -d "$d" ]] && db_path="$d" && break
