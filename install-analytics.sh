@@ -34,6 +34,14 @@ apt_install() {
 # ---- System packages (no psycopg2, no libpq-dev, no python3-dev) ----
 apt_install postgresql postgresql-client python3 python3-pip
 
+# ---- Ensure local service account exists ----
+if ! getent group tar1090 >/dev/null; then
+    groupadd --system tar1090
+fi
+if ! id -u tar1090 >/dev/null 2>&1; then
+    useradd --system --gid tar1090 --home-dir /nonexistent --shell /usr/sbin/nologin tar1090
+fi
+
 # ---- Nuke ALL psycopg2 leftovers (pip packages, pip cache, old lib dirs, old requirements) ----
 "$PYTHON3" -m pip uninstall -y psycopg2-binary 2>/dev/null || true
 "$PYTHON3" -m pip uninstall -y psycopg2 2>/dev/null || true
@@ -57,6 +65,7 @@ cp "$git_dir/services/ingest/"*.py "$analytics_dir/ingest/"
 cp "$git_dir/services/api/"*.py   "$analytics_dir/api/"
 cp "$git_dir/services/jobs/"*.py  "$analytics_dir/jobs/"
 cp "$git_dir/services/schema-plain.sql" "$analytics_dir/schema-plain.sql"
+chown -R tar1090:tar1090 "$analytics_dir" /var/lib/tar1090/photo-cache 2>/dev/null || true
 
 # ---- Install ALL pip packages system-wide (pure Python, no wheels to build) ----
 echo "Installing pg8000 + fastapi + uvicorn + deps via pip ..."
