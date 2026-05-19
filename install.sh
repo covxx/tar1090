@@ -414,8 +414,8 @@ EOF
     else
         # Keep analytics on and avoid localhost-only API URLs that break remote clients.
         sed -i -E 's|^analyticsEnabled\s*=.*|analyticsEnabled = true;|' "$TMP/config.js" 2>/dev/null || true
-        sed -i -E 's|^analyticsApiUrl\s*=\s*"http://127\.0\.0\.1:9056";|analyticsApiUrl = "";|' "$TMP/config.js" 2>/dev/null || true
-        sed -i -E 's|^analyticsApiUrl\s*=\s*"http://localhost:9056";|analyticsApiUrl = "";|' "$TMP/config.js" 2>/dev/null || true
+        sed -i -E 's|^analyticsApiUrl\s*=\s*"http://127\.0\.0\.1:[0-9]+";|analyticsApiUrl = "";|' "$TMP/config.js" 2>/dev/null || true
+        sed -i -E 's|^analyticsApiUrl\s*=\s*"http://localhost:[0-9]+";|analyticsApiUrl = "";|' "$TMP/config.js" 2>/dev/null || true
     fi
 
     # bust cache for all css and js files
