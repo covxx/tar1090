@@ -150,9 +150,18 @@ if [[ "$1" == "test" ]] || [[ -n "$git_source" ]]; then
     fi
     cd "$gpath/git"
     TAR_VERSION="$(cat version)_dirty"
+    GIT_ROOT="$gpath/git"
 else
     VERSION_NEW=$(curl --silent --show-error "https://raw.githubusercontent.com/${repo_raw}/${repo_branch}/version")
-    if  [[ "$(cat "$gpath/git/version" 2>/dev/null)" != "$VERSION_NEW" ]]; then
+    need_git_update=no
+    if [[ "$(cat "$gpath/git/version" 2>/dev/null)" != "$VERSION_NEW" ]]; then
+        need_git_update=yes
+    fi
+    # Re-fetch if checkout is incomplete (e.g. cached before install-analytics.sh existed)
+    if [[ ! -f "$gpath/git/install-analytics.sh" ]] || [[ ! -f "$gpath/git/tar1090.sh" ]]; then
+        need_git_update=yes
+    fi
+    if [[ "$need_git_update" == "yes" ]]; then
         if ! getGIT "$repo" "$repo_branch" "$gpath/git"; then
             echo "Unable to download files, exiting! (Maybe try again?)"
             exit 1
@@ -164,6 +173,8 @@ else
     fi
     TAR_VERSION="$(cat version)"
 fi
+
+GIT_ROOT="$gpath/git"
 
 
 if [[ -n $1 ]] && [ "$1" != "test" ] ; then
@@ -212,7 +223,7 @@ fi
 instances=$(echo -e "$instances" | grep -v -e '^#')
 
 
-if ! diff tar1090.sh "$ipath"/tar1090.sh &>/dev/null; then
+if ! diff "$GIT_ROOT/tar1090.sh" "$ipath"/tar1090.sh &>/dev/null; then
     changed=yes
     while read -r srcdir instance; do
         if [[ -z "$srcdir" || -z "$instance" ]]; then
@@ -229,17 +240,24 @@ if ! diff tar1090.sh "$ipath"/tar1090.sh &>/dev/null; then
         fi
     done < <(echo "$instances")
     rm -f "$ipath"/tar1090.sh
-    cp tar1090.sh "$ipath"
+    cp "$GIT_ROOT/tar1090.sh" "$ipath"
 fi
 
 
-# copy over base files
-cp install.sh install-analytics.sh uninstall.sh getupintheair.sh LICENSE README.md "$ipath"
-cp tar1090-analytics-*.service README-ANALYTICS.md docker-compose.yml nginx-analytics.conf .env.example "$ipath" 2>/dev/null || true
-chmod +x "$ipath/install-analytics.sh" 2>/dev/null || true
-cp default "$ipath/example_config_dont_edit"
-cp html/config.js "$ipath/example_config.js"
+# copy over base files (always from git checkout, not cwd — wget one-liner only has install.sh)
+cp "$GIT_ROOT/install.sh" "$GIT_ROOT/uninstall.sh" "$GIT_ROOT/getupintheair.sh" "$GIT_ROOT/LICENSE" "$GIT_ROOT/README.md" "$ipath/"
+if [[ -f "$GIT_ROOT/install-analytics.sh" ]]; then
+    cp "$GIT_ROOT/install-analytics.sh" "$ipath/"
+    chmod +x "$ipath/install-analytics.sh"
+else
+    echo "WARNING: install-analytics.sh not in repo checkout; analytics install will be skipped."
+fi
+cp "$GIT_ROOT"/tar1090-analytics-*.service "$GIT_ROOT/README-ANALYTICS.md" "$GIT_ROOT/docker-compose.yml" "$GIT_ROOT/nginx-analytics.conf" "$GIT_ROOT/.env.example" "$ipath" 2>/dev/null || true
+cp "$GIT_ROOT/default" "$ipath/example_config_dont_edit"
+cp "$GIT_ROOT/html/config.js" "$ipath/example_config.js"
 rm -f "$ipath/default"
+
+cd "$GIT_ROOT" || exit 1
 
 # create 95-tar1090-otherport.conf
 {
@@ -304,7 +322,7 @@ do
 
     sed -i.orig -e "s?SOURCE_DIR?$srcdir?g" -e "s?SERVICE?${service}?g" tar1090.service
 
-    cp -r -T html "$TMP"
+    cp -r -T "$GIT_ROOT/html" "$TMP"
     cp -r -T "$gpath/git-db/db" "$TMP/db-$DB_VERSION"
     sed -i -e "s/let databaseFolder = .*;/let databaseFolder = \"db-$DB_VERSION\";/" "$TMP/index.html"
     echo "{ \"tar1090Version\": \"$TAR_VERSION\", \"databaseVersion\": \"$DB_VERSION\" }" > "$TMP/version.json"
