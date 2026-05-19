@@ -55,21 +55,42 @@ cp "$git_dir/services/jobs/"*.py "$analytics_dir/jobs/"
 cp "$git_dir/services/schema-plain.sql" "$analytics_dir/schema-plain.sql"
 cp "$git_dir/services/requirements.txt" "$analytics_dir/requirements.txt"
 
-# Python virtualenv (system-site-packages when using apt psycopg2 — avoids pip wheel build on ARM/Pi)
+# Ensure apt psycopg2 is installed and visible to system python3
+if ! python3 -c "import psycopg2" 2>/dev/null; then
+    echo "Installing python3-psycopg2 for system Python..."
+    apt-get install -y --no-install-recommends python3-psycopg2 || true
+fi
+system_has_psycopg2=no
+if python3 -c "import psycopg2" 2>/dev/null; then
+    system_has_psycopg2=yes
+fi
+
+venv_needs_rebuild=no
 if [[ ! -x "$ipath/analytics-venv/bin/python" ]]; then
-    if [[ "$use_system_psycopg2" == yes ]]; then
+    venv_needs_rebuild=yes
+elif ! "$ipath/analytics-venv/bin/python" -c "import psycopg2" 2>/dev/null; then
+    echo "Existing analytics venv cannot import psycopg2 (likely created before apt package was installed)."
+    echo "Recreating venv with --system-site-packages ..."
+    venv_needs_rebuild=yes
+fi
+
+if [[ "$venv_needs_rebuild" == yes ]]; then
+    rm -rf "$ipath/analytics-venv"
+    if [[ "$system_has_psycopg2" == yes ]] || [[ "$use_system_psycopg2" == yes ]]; then
         python3 -m venv --system-site-packages "$ipath/analytics-venv"
     else
         python3 -m venv "$ipath/analytics-venv"
     fi
 fi
+
 PIP="$ipath/analytics-venv/bin/pip"
+PY="$ipath/analytics-venv/bin/python"
 "$PIP" install -q --upgrade pip wheel setuptools
 
 if [[ -f "$git_dir/services/requirements-native.txt" ]]; then
     reqfile="$git_dir/services/requirements-native.txt"
     cp "$reqfile" "$analytics_dir/requirements-native.txt"
-elif [[ "$use_system_psycopg2" == yes ]]; then
+elif [[ "$system_has_psycopg2" == yes ]]; then
     grep -vE '^\s*psycopg2' "$analytics_dir/requirements.txt" > "$analytics_dir/requirements-native.txt"
     reqfile="$analytics_dir/requirements-native.txt"
 else
@@ -78,17 +99,30 @@ fi
 
 echo "Installing Python packages from $reqfile ..."
 if ! "$PIP" install -r "$reqfile"; then
-    echo "pip install failed; retrying with full requirements (may compile psycopg2 — slow on Pi) ..."
-    "$PIP" install -r "$analytics_dir/requirements.txt" || {
-        echo "FATAL: could not install Python dependencies. Try: sudo apt install python3-psycopg2 libpq-dev python3-dev build-essential"
-        exit 1
-    }
+    echo "pip install failed; retrying with full requirements ..."
+    "$PIP" install -r "$analytics_dir/requirements.txt" || true
 fi
 
-if ! "$ipath/analytics-venv/bin/python" -c "import psycopg2" 2>/dev/null; then
-    echo "FATAL: psycopg2 not available. Run: sudo apt install python3-psycopg2 libpq-dev"
+# Last resort: pip install psycopg2 into the venv (needs libpq-dev from apt above)
+if ! "$PY" -c "import psycopg2" 2>/dev/null; then
+    echo "Trying pip install psycopg2-binary into venv ..."
+    "$PIP" install psycopg2-binary || "$PIP" install psycopg2 || true
+fi
+
+if ! "$PY" -c "import psycopg2" 2>/dev/null; then
+    echo "FATAL: psycopg2 still not importable in analytics venv."
+    echo "  System python3: $(python3 -c 'import psycopg2; print(psycopg2.__file__)' 2>/dev/null || echo MISSING)"
+    echo "  Venv python:    $($PY -c 'import sys; print(sys.path)' 2>/dev/null | head -c 200)"
+    echo "Fix manually:"
+    echo "  sudo rm -rf $ipath/analytics-venv"
+    echo "  sudo apt install python3-psycopg2 libpq-dev"
+    echo "  sudo python3 -m venv --system-site-packages $ipath/analytics-venv"
+    echo "  sudo $ipath/analytics-venv/bin/pip install -r $analytics_dir/requirements-native.txt"
     exit 1
 fi
+echo "psycopg2 OK: $($PY -c 'import psycopg2; print(psycopg2.__file__)')"
+
+chown -R tar1090:tar1090 "$ipath/analytics-venv" "$analytics_dir" /var/lib/tar1090/photo-cache 2>/dev/null || true
 
 # Apply schema
 export PGPASSWORD=tar1090
