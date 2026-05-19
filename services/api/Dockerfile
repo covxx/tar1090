@@ -9,6 +9,6 @@ COPY queries.py main.py ./
 
 ENV PYTHONUNBUFFERED=1
 
-EXPOSE 8080
+EXPOSE 9056
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9056"]

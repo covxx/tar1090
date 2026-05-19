@@ -4,7 +4,7 @@ function getAnalyticsApiBase() {
     if (typeof analyticsApiBase !== "undefined" && analyticsApiBase) {
         return analyticsApiBase.replace(/\/$/, "");
     }
-    return window.location.protocol + "//" + window.location.hostname + ":8080";
+    return window.location.protocol + "//" + window.location.hostname + ":" + (typeof analyticsPort !== "undefined" ? analyticsPort : 9056);
 }
 const API_BASE = getAnalyticsApiBase();
 

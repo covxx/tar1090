@@ -8,7 +8,7 @@ Analytics runs **automatically with `install.sh`** on Ubuntu/Debian — no Docke
 |-----------|-----|
 | Database | PostgreSQL (`tar1090` database) |
 | Ingest | `tar1090-analytics-ingest.service` — reads `aircraft.json` |
-| API | `tar1090-analytics-api.service` — port **8080** |
+| API | `tar1090-analytics-api.service` — port **9056** |
 | Jobs | `tar1090-analytics-jobs.service` — hourly leaderboards / paths |
 | UI | `analytics.html` served with the map (button **A**) |
 
@@ -30,7 +30,7 @@ sudo bash -c "$(wget -nv -O - https://github.com/covxx/tar1090/raw/master/instal
 
 - **Live map:** `http://YOUR_IP:8504/tar1090/` (or your usual URL)
 - **Analytics page:** same host, path `/tar1090/analytics.html`, or click **A** on the map
-- **API health:** `http://YOUR_IP:8080/health`
+- **API health:** `http://YOUR_IP:9056/health`
 
 Hard-refresh the browser (Ctrl+Shift+R) if you still see the old UI.
 
@@ -38,7 +38,7 @@ Hard-refresh the browser (Ctrl+Shift+R) if you still see the old UI.
 
 ```bash
 systemctl status tar1090-analytics-api tar1090-analytics-ingest tar1090-analytics-jobs
-curl -s http://127.0.0.1:8080/health
+curl -s http://127.0.0.1:9056/health
 ```
 
 Python deps live in `/usr/local/share/tar1090/analytics-lib` (no venv). `PYTHONPATH` is set in `/etc/default/tar1090-analytics`.

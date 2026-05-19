@@ -125,6 +125,6 @@ systemctl daemon-reload
 systemctl enable tar1090-analytics-api tar1090-analytics-ingest tar1090-analytics-jobs
 systemctl restart tar1090-analytics-api tar1090-analytics-ingest tar1090-analytics-jobs || true
 
-echo "Analytics API: http://127.0.0.1:8080/health"
+echo "Analytics API: http://127.0.0.1:9056/health"
 echo "Test: sudo -u tar1090 env PYTHONPATH=$PYTHONPATH_EXTRA $PYTHON3 -c 'import psycopg2; print(\"ok\")'"
 echo "--------------"

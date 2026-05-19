@@ -35,7 +35,7 @@ services:
   api:
     build: ./services/api
     ports:
-      - "8080:8080"
+      - "9056:9056"
     environment:
       DATABASE_URL: postgresql://tar1090:tar1090@timescaledb:5432/tar1090
       PHOTO_CACHE_DIR: /cache/photos

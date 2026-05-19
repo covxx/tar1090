@@ -30,8 +30,8 @@
 SiteShow    = true;
 SiteName    = "ADS-B Analytics";
 
-// Analytics API (Docker stack on port 8080, or proxied at /api/)
-analyticsApiUrl = "http://127.0.0.1:8080";
+// Analytics API (default port 9056; empty analyticsApiUrl = auto hostname)
+analyticsApiUrl = "http://127.0.0.1:9056";
 analyticsEnabled = true;
 
 // Update GPS location (keep map centered on GPS location)

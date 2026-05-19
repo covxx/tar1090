@@ -356,8 +356,9 @@ let jetphotoLinks = false;
 
 let showSil = true;
 
-// Analytics API base URL (empty = disabled)
+// Analytics API (empty analyticsApiUrl = same host, analyticsPort)
 let analyticsApiUrl = "";
+let analyticsPort = 9056;
 let analyticsEnabled = false;
 // this shows small pictures in the details but they need to be provided by the user in the folder /usr/local/share/tar1090/aircraft_sil
 // showPictures needs to be enabled as well
