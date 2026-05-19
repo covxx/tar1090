@@ -348,11 +348,3 @@ function toggleAnalytics() {
 if (typeof initAnalyticsPoll === "function") {
     initAnalyticsPoll();
 }
-
-// Some browsers/extensions can miss the jQuery-UI tab activate callback on first load.
-// Force one lazy init so analytics content is populated when the user opens the tab.
-setTimeout(function () {
-    if (typeof initAnalyticsUI === "function") {
-        initAnalyticsUI();
-    }
-}, 1200);

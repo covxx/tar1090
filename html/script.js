@@ -9230,6 +9230,9 @@ function initAnalyticsPoll() {
     jQuery('#analytics_tab_li, #A').show();
     refreshAnalyticsStats();
     setInterval(refreshAnalyticsStats, 60000);
+    if (typeof initAnalyticsUI === 'function') {
+        initAnalyticsUI();
+    }
     if (usp.has('analytics')) {
         setTimeout(function () {
             if (typeof openAnalyticsTab === 'function') {
