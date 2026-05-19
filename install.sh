@@ -143,6 +143,7 @@ function ensure_analytics_in_repo() {
     local analytics_files=(
         services/schema-plain.sql
         services/requirements.txt
+        services/requirements-native.txt
         services/ingest/main.py
         services/ingest/db.py
         services/ingest/enrich.py

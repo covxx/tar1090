@@ -20,7 +20,16 @@ fi
 echo "--------------"
 echo "Installing tar1090 analytics (native, no Docker)..."
 
-packages=(postgresql python3-venv python3-pip)
+packages=(
+    postgresql postgresql-client
+    python3-venv python3-pip python3-dev
+    libpq-dev build-essential
+)
+use_system_psycopg2=no
+if apt-cache show python3-psycopg2 &>/dev/null; then
+    packages+=(python3-psycopg2)
+    use_system_psycopg2=yes
+fi
 echo "Installing packages: ${packages[*]}"
 apt-get install -y --no-install-recommends "${packages[@]}" || {
     apt-get update || true
@@ -46,12 +55,40 @@ cp "$git_dir/services/jobs/"*.py "$analytics_dir/jobs/"
 cp "$git_dir/services/schema-plain.sql" "$analytics_dir/schema-plain.sql"
 cp "$git_dir/services/requirements.txt" "$analytics_dir/requirements.txt"
 
-# Python virtualenv
+# Python virtualenv (system-site-packages when using apt psycopg2 — avoids pip wheel build on ARM/Pi)
 if [[ ! -x "$ipath/analytics-venv/bin/python" ]]; then
-    python3 -m venv "$ipath/analytics-venv"
+    if [[ "$use_system_psycopg2" == yes ]]; then
+        python3 -m venv --system-site-packages "$ipath/analytics-venv"
+    else
+        python3 -m venv "$ipath/analytics-venv"
+    fi
 fi
-"$ipath/analytics-venv/bin/pip" install -q --upgrade pip
-"$ipath/analytics-venv/bin/pip" install -q -r "$analytics_dir/requirements.txt"
+PIP="$ipath/analytics-venv/bin/pip"
+"$PIP" install -q --upgrade pip wheel setuptools
+
+if [[ -f "$git_dir/services/requirements-native.txt" ]]; then
+    reqfile="$git_dir/services/requirements-native.txt"
+    cp "$reqfile" "$analytics_dir/requirements-native.txt"
+elif [[ "$use_system_psycopg2" == yes ]]; then
+    grep -vE '^\s*psycopg2' "$analytics_dir/requirements.txt" > "$analytics_dir/requirements-native.txt"
+    reqfile="$analytics_dir/requirements-native.txt"
+else
+    reqfile="$analytics_dir/requirements.txt"
+fi
+
+echo "Installing Python packages from $reqfile ..."
+if ! "$PIP" install -r "$reqfile"; then
+    echo "pip install failed; retrying with full requirements (may compile psycopg2 — slow on Pi) ..."
+    "$PIP" install -r "$analytics_dir/requirements.txt" || {
+        echo "FATAL: could not install Python dependencies. Try: sudo apt install python3-psycopg2 libpq-dev python3-dev build-essential"
+        exit 1
+    }
+fi
+
+if ! "$ipath/analytics-venv/bin/python" -c "import psycopg2" 2>/dev/null; then
+    echo "FATAL: psycopg2 not available. Run: sudo apt install python3-psycopg2 libpq-dev"
+    exit 1
+fi
 
 # Apply schema
 export PGPASSWORD=tar1090
