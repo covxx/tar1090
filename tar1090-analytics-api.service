@@ -8,7 +8,7 @@ User=tar1090
 Group=tar1090
 WorkingDirectory=/usr/local/share/tar1090/analytics/api
 EnvironmentFile=/etc/default/tar1090-analytics
-ExecStart=/usr/bin/python3 -m uvicorn main:app --host 127.0.0.1 --port 9056
+ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 9056
 Restart=always
 RestartSec=10
 

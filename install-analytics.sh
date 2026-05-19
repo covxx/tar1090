@@ -77,9 +77,27 @@ echo "Installing pg8000 + fastapi + uvicorn + deps via pip ..."
     }
 
 # ---- Verify imports ----
-"$PYTHON3" -c "import pg8000; print('pg8000 OK:', pg8000.__version__)"
-"$PYTHON3" -c "import fastapi, uvicorn; print('fastapi+uvicorn OK')"
+"$PYTHON3" -c "import pg8000.native; print('pg8000 OK:', pg8000.__version__)" || {
+    echo "FATAL: pg8000 not importable. pip output above should explain why."
+    exit 1
+}
+"$PYTHON3" -c "import fastapi, uvicorn, httpx, geohash2; print('fastapi+uvicorn+httpx+geohash2 OK')" || {
+    echo "FATAL: Python deps not importable."
+    exit 1
+}
 echo "All Python deps OK."
+
+# ---- Quick DB connection test ----
+"$PYTHON3" -c "
+import pg8000.native
+try:
+    c = pg8000.native.Connection(user='tar1090', password='tar1090', host='127.0.0.1', port=5432, database='tar1090')
+    c.run('SELECT 1')
+    c.close()
+    print('DB connection OK')
+except Exception as e:
+    print(f'DB connection test failed: {e}')
+" || true
 
 # ---- Apply schema ----
 export PGPASSWORD=tar1090

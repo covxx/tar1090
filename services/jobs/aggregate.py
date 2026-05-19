@@ -1,5 +1,4 @@
 """Nightly aggregation: path_cells, records, retention."""
-import json
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -92,7 +91,7 @@ def refresh_records(period: str, days: int) -> int:
                 "ON CONFLICT (period, category, icao) DO UPDATE SET "
                 "value = EXCLUDED.value, metadata = EXCLUDED.metadata, updated_at = NOW()",
                 period=period, icao=icao, val=val,
-                meta=json.dumps({"callsign": callsign, "icao_type": icao_type}),
+                meta={"callsign": callsign, "icao_type": icao_type},
             )
             count += 1
 
@@ -109,7 +108,7 @@ def refresh_records(period: str, days: int) -> int:
                 "ON CONFLICT (period, category, icao) DO UPDATE SET "
                 "value = EXCLUDED.value, metadata = EXCLUDED.metadata, updated_at = NOW()",
                 period=period, icao=icao, val=val,
-                meta=json.dumps({"callsign": callsign, "icao_type": icao_type}),
+                meta={"callsign": callsign, "icao_type": icao_type},
             )
             count += 1
 
@@ -125,7 +124,7 @@ def refresh_records(period: str, days: int) -> int:
                 "ON CONFLICT (period, category, icao) DO UPDATE SET "
                 "value = EXCLUDED.value, metadata = EXCLUDED.metadata, updated_at = NOW()",
                 period=period, icao=icao, val=ws or ln,
-                meta=json.dumps({"callsign": reg, "icao_type": itype}),
+                meta={"callsign": reg, "icao_type": itype},
             )
             count += 1
 
@@ -141,7 +140,7 @@ def refresh_records(period: str, days: int) -> int:
                 "ON CONFLICT (period, category, icao) DO UPDATE SET "
                 "value = EXCLUDED.value, metadata = EXCLUDED.metadata, updated_at = NOW()",
                 period=period, icao=icao, val=ws or ln,
-                meta=json.dumps({"callsign": reg, "icao_type": itype}),
+                meta={"callsign": reg, "icao_type": itype},
             )
             count += 1
 
