@@ -1,0 +1,73 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: tar1090
+      POSTGRES_PASSWORD: tar1090
+      POSTGRES_DB: tar1090
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./services/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tar1090 -d tar1090"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  ingest:
+    build: ./services/ingest
+    environment:
+      DATABASE_URL: postgresql://tar1090:tar1090@timescaledb:5432/tar1090
+      AIRCRAFT_JSON: /data/aircraft.json
+      INGEST_INTERVAL: "2"
+      BATCH_INTERVAL: "8"
+      TAR1090_DB_PATH: /db
+    volumes:
+      # Linux readsb default; override in .env for Windows/testing
+      - ${READSB_RUN_DIR:-/run/readsb}:/data:ro
+      - ${TAR1090_DB_DIR:-/usr/local/share/tar1090/html/db2}:/db:ro
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  api:
+    build: ./services/api
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgresql://tar1090:tar1090@timescaledb:5432/tar1090
+      PHOTO_CACHE_DIR: /cache/photos
+    volumes:
+      - photocache:/cache/photos
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  jobs:
+    build: ./services/jobs
+    environment:
+      DATABASE_URL: postgresql://tar1090:tar1090@timescaledb:5432/tar1090
+      JOB_INTERVAL: "3600"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8505:80"
+    volumes:
+      - ./nginx-analytics.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./html:/usr/share/nginx/html/tar1090:ro
+      - ./aircraft_sil:/usr/share/nginx/html/aircraft_sil:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  photocache:

@@ -2,7 +2,8 @@
 INTERVAL=8
 
 # How many snapshots are stored in the track history
-HISTORY_SIZE=450
+# 4500 x 8s = ~10 hours of live trails on the map
+HISTORY_SIZE=4500
 
 # history duration computes as HISTORY_SIZE x INTERVAL seconds.
 

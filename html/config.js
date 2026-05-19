@@ -27,8 +27,12 @@
 // specify lat lon that the 'auto-select plane' feature will choose the closest plane to
 // autoselectCoords = [42, 21];
 
-//SiteShow    = false;           // true to show a center marker
-//SiteName    = "My Radar Site"; // tooltip of the marker
+SiteShow    = true;
+SiteName    = "ADS-B Analytics";
+
+// Analytics API (Docker stack on port 8080, or proxied at /api/)
+analyticsApiUrl = "http://127.0.0.1:8080";
+analyticsEnabled = true;
 
 // Update GPS location (keep map centered on GPS location)
 //updateLocation = false;
@@ -311,9 +315,8 @@ HideCols = [
 */ // remove this line to modify columns (and the one at the start)
 
 // show aircraft pictures
-// showPictures = true;
-// get pictures from planespotters.net
-// planespottersAPI = true;
+showPictures = true;
+planespottersAPI = true;
 // get pictures from planespotting.be
 // planespottingAPI = true;
 
@@ -329,7 +332,7 @@ HideCols = [
 // show a link to jetphotos, only works if planespottersAPI is disabled
 // jetphotoLinks = false;
 
-// showSil = false;
+showSil = true;
 // this shows small pictures in the details but they need to be provided by the user in the folder /usr/local/share/tar1090/aircraft_sil
 // showPictures needs to be enabled as well
 // to only get these pictures disable the planespottersAPI

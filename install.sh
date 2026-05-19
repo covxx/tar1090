@@ -8,8 +8,13 @@ trap 'echo "[ERROR] Error in line $LINENO when executing: $BASH_COMMAND"' ERR
 renice 10 $$
 
 srcdir=/run/readsb
-repo="https://github.com/wiedehopf/tar1090"
-db_repo="https://github.com/wiedehopf/tar1090-db"
+# Fork repo (override: TAR1090_REPO, TAR1090_BRANCH)
+repo="${TAR1090_REPO:-https://github.com/covxx/tar1090}"
+repo_branch="${TAR1090_BRANCH:-master}"
+# Aircraft metadata DB stays on upstream wiedehopf/tar1090-db
+db_repo="${TAR1090_DB_REPO:-https://github.com/wiedehopf/tar1090-db}"
+db_branch="${TAR1090_DB_BRANCH:-master}"
+repo_raw="${repo#https://github.com/}"
 
 # optional command line options for this install script
 # $1: data source directory
@@ -38,7 +43,7 @@ then
 fi
 
 # terminate with /
-command_package="git git/jq jq/curl curl"
+command_package="git git/jq jq/curl curl/unzip unzip"
 packages=()
 
 while read -r -d '/' CMD PKG
@@ -119,9 +124,9 @@ function revision() {
 }
 
 if ! { [[ "$1" == "test" ]] && cd "$gpath/git-db"; }; then
-    DB_VERSION_NEW=$(curl --silent --show-error "https://raw.githubusercontent.com/wiedehopf/tar1090-db/master/version")
+    DB_VERSION_NEW=$(curl --silent --show-error "https://raw.githubusercontent.com/${db_repo#https://github.com/}/${db_branch}/version")
     if  [[ "$(cat "$gpath/git-db/version" 2>/dev/null)" != "$DB_VERSION_NEW" ]]; then
-        getGIT "$db_repo" "master" "$gpath/git-db" || true
+        getGIT "$db_repo" "$db_branch" "$gpath/git-db" || true
     fi
 fi
 
@@ -146,9 +151,9 @@ if [[ "$1" == "test" ]] || [[ -n "$git_source" ]]; then
     cd "$gpath/git"
     TAR_VERSION="$(cat version)_dirty"
 else
-    VERSION_NEW=$(curl --silent --show-error "https://raw.githubusercontent.com/wiedehopf/tar1090/master/version")
+    VERSION_NEW=$(curl --silent --show-error "https://raw.githubusercontent.com/${repo_raw}/${repo_branch}/version")
     if  [[ "$(cat "$gpath/git/version" 2>/dev/null)" != "$VERSION_NEW" ]]; then
-        if ! getGIT "$repo" "master" "$gpath/git"; then
+        if ! getGIT "$repo" "$repo_branch" "$gpath/git"; then
             echo "Unable to download files, exiting! (Maybe try again?)"
             exit 1
         fi
@@ -230,6 +235,7 @@ fi
 
 # copy over base files
 cp install.sh uninstall.sh getupintheair.sh LICENSE README.md "$ipath"
+cp README-ANALYTICS.md docker-compose.yml nginx-analytics.conf .env.example "$ipath" 2>/dev/null || true
 cp default "$ipath/example_config_dont_edit"
 cp html/config.js "$ipath/example_config.js"
 rm -f "$ipath/default"
@@ -397,12 +403,18 @@ do
     mv tar1090.service.orig tar1090.service
 done < <(echo "$instances")
 
+# Aircraft silhouette images for photo fallback (analytics fork)
+if [[ -d "$gpath/git/aircraft_sil" ]]; then
+    mkdir -p "$ipath/aircraft_sil"
+    cp -r "$gpath/git/aircraft_sil/"*.png "$ipath/aircraft_sil/" 2>/dev/null || true
+fi
+
 if [[ $lighttpd == yes ]]; then
     if lighttpd -tt -f /etc/lighttpd/lighttpd.conf 2>&1 | grep -i duplicate >/dev/null; then
         mv -f /etc/lighttpd/conf-available/89-dump1090-fa.conf.dpkg-dist /etc/lighttpd/conf-available/89-dump1090-fa.conf &>/dev/null || true
     fi
 
-    if ! grep -qs -E -e '^[^#]*"mod_alias"' /etc/lighttpd/lighttpd.conf /etc/lighttp/conf-enabled/* /etc/lighttpd/external.conf; then
+    if ! grep -qs -E -e '^[^#]*"mod_alias"' /etc/lighttpd/lighttpd.conf /etc/lighttpd/conf-enabled/* /etc/lighttpd/external.conf; then
         echo 'server.modules += ( "mod_alias" )' > /etc/lighttpd/conf-available/07-mod_alias.conf
         ln -s -f /etc/lighttpd/conf-available/07-mod_alias.conf /etc/lighttpd/conf-enabled/07-mod_alias.conf
     else
@@ -495,5 +507,11 @@ elif [[ $nginx == yes ]]; then
     done
 else
     echo "All done! You'll need to configure your webserver yourself, see ${ipath}/nginx-tar1090.conf for a reference nginx configuration"
+fi
+
+if [[ -f "$gpath/git/README-ANALYTICS.md" ]] || [[ -f "$gpath/git/docker-compose.yml" ]]; then
+    echo
+    echo "Analytics stack (optional): see ${ipath}/README-ANALYTICS.md or run 'docker compose up -d' from the git checkout."
+    echo "  Dashboard: http://$(ip route get 1.2.3.4 2>/dev/null | grep -m1 -o -P 'src \K[0-9,.]*' || echo 'YOUR_IP'):8505/tar1090/analytics.html"
 fi
 

@@ -784,7 +784,8 @@
         </div>
         <div id="header_top" class="infoHeading">
           <div class="buttonContainer">
-            <span id="U" title="only show the U2 and other military planes" class="button inActiveButton" onclick="toggleMilitary();"><span class="buttonText">U</span></span>
+            <span id="U" title="Military only (U)" class="button inActiveButton" onclick="toggleMilitary();"><span class="buttonText">U</span></span>
+            <a id="analytics_link" href="analytics.html" title="Analytics dashboard" class="button inActiveButton" style="text-decoration:none;display:inline-flex;align-items:center;"><span class="buttonText">A</span></a>
             <span id="H" title="(H)ome / Reset Map" class="button inActiveButton" onclick="resetMap();"><span class="buttonText">H</span></span>
             <span id="T" title="All (T)racks" class="button inActiveButton" onclick="selectAllPlanes();"><span class="buttonText">T</span></span>
             <span id="RP" title="Repla(Y)" class="button inActiveButton replayButton" onclick="showReplayBar();" style="display: none"><span class="buttonText"></span></span>
@@ -905,6 +906,9 @@
                     <tr class="infoblock_body">
                       <td style="width: 50%"><span id="with_positions" class="infoBlockTitleText">With Position:</span> <span id="dump1090_total_ac_positions">n/a</span></td>
                       <td id="dump1090_total_history_td"><span class="infoBlockTitleText">History:</span> <span id="dump1090_total_history">n/a</span> positions</td>
+                    </tr>
+                    <tr id="analytics_stats_row" class="infoblock_body hidden">
+                      <td colspan="2"><span class="infoBlockTitleText">Today highest:</span> <span id="analytics_highest">n/a</span> &nbsp;|&nbsp; <span class="infoBlockTitleText">Military:</span> <span id="analytics_military">n/a</span></td>
                     </tr>
                   </table>
                   <table style="width: 100%" id="infoblock_altimeter" class="hidden">

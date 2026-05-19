@@ -1,0 +1,91 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>ADS-B Analytics</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="analytics.css"/>
+  <link rel="icon" type="image/png" href="images/tar1090-favicon.png"/>
+  <script>const analyticsApiBase = "/api";</script>
+</head>
+<body>
+  <header>
+    <h1>ADS-B Analytics</h1>
+    <nav>
+      <a href="index.html">Live Map</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="tabs">
+      <button type="button" class="active" data-period="day">Today</button>
+      <button type="button" data-period="week">Week</button>
+      <button type="button" data-period="month">Month</button>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="label">Aircraft seen</div>
+        <div class="value" id="stat_seen">—</div>
+      </div>
+      <div class="card">
+        <div class="label">Military sightings</div>
+        <div class="value" id="stat_military">—</div>
+      </div>
+      <div class="card">
+        <div class="label">Highest altitude</div>
+        <div class="value" id="stat_highest">—</div>
+      </div>
+    </div>
+
+    <p id="status"></p>
+
+    <div class="grid-2">
+      <div class="panel">
+        <h2>Leaderboards</h2>
+        <div class="tabs">
+          <button type="button" class="active" data-category="highest_alt">Highest</button>
+          <button type="button" data-category="fastest_gs">Fastest</button>
+          <button type="button" data-category="largest">Largest</button>
+          <button type="button" data-category="smallest">Smallest</button>
+        </div>
+        <table>
+          <thead>
+            <tr><th>#</th><th>ICAO</th><th>Callsign</th><th>Type</th><th>Value</th><th>Photo</th></tr>
+          </thead>
+          <tbody id="leaderboard_body"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Military feed</h2>
+        <table>
+          <thead>
+            <tr><th>Time</th><th>ICAO</th><th>Callsign</th><th>Type</th><th>Alt</th><th>Photo</th></tr>
+          </thead>
+          <tbody id="military_body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Top flight paths</h2>
+      <div id="pathMap"></div>
+    </div>
+
+    <div class="panel">
+      <h2>History explorer</h2>
+      <div class="history-controls">
+        <input id="hist_icao" type="text" placeholder="ICAO hex e.g. 3c6443" maxlength="6"/>
+        <button type="button" id="hist_load">Load track</button>
+      </div>
+      <p id="alt_chart"></p>
+      <div id="historyMap"></div>
+    </div>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="analytics.js"></script>
+</body>
+</html>

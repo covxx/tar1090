@@ -3339,7 +3339,7 @@ function displaySil() {
     let new_html="";
     let type = selected.icaoType ? selected.icaoType : 'ZZZZ';
     let hex = selected.icao.toUpperCase();
-    new_html = "<img id='silhouette' width='"+ 151 * globalScale + "' src='aircraft_sil/" + type + ".png' />";
+    new_html = "<img id='silhouette' width='"+ 151 * globalScale + "' src='aircraft_sil/" + type + ".png' onerror=\"this.onerror=null;this.src='aircraft_sil/ZZZZ.png';\" />";
     setPhotoHtml(new_html);
     selected.icao.toUpperCase();
 }
@@ -3353,8 +3353,7 @@ function displayPhoto() {
     }
     let photos = SelectedPlane.psAPIresponse["photos"] || SelectedPlane.psAPIresponse["images"];
     if (!photos || photos.length == 0) {
-        displaySil();
-        adjustInfoBlock();
+        displayPhotoFromAnalytics(SelectedPlane);
         return;
     }
     let new_html="";
@@ -3365,6 +3364,19 @@ function displayPhoto() {
     let copyright = photos[0]["photographer"] || photos[0]["user"];
     jQuery('#copyrightInfo').html("<span>Image © " + copyright +"</span>");
     setPhotoHtml(new_html);
+    adjustInfoBlock();
+}
+
+function displayPhotoFromAnalytics(selected) {
+    if (!analyticsEnabled || !analyticsApiUrl || selected.icao[0] == '~') {
+        displaySil();
+        return;
+    }
+    const icao = selected.icao.toUpperCase();
+    const imgUrl = analyticsApiUrl.replace(/\/$/, '') + '/photo/' + icao;
+    const html = '<img id="airplanePhoto" src="' + imgUrl + '" onerror="displaySil();"/>';
+    setPhotoHtml(html);
+    jQuery('#copyrightInfo').html('<span>Image via analytics cache</span>');
     adjustInfoBlock();
 }
 
@@ -3420,6 +3432,12 @@ function refreshPhoto(selected) {
 
         req.done(function(data) {
             this.plane.psAPIresponse = data;
+            if (SelectedPlane == this.plane) {
+                displayPhoto();
+            }
+        });
+        req.fail(function() {
+            this.plane.psAPIresponse = {'photos': []};
             if (SelectedPlane == this.plane) {
                 displayPhoto();
             }
@@ -9150,7 +9168,34 @@ function globeRateUpdate() {
 }
 globeRateUpdate();
 
+function refreshAnalyticsStats() {
+    if (!analyticsEnabled || !analyticsApiUrl) {
+        return;
+    }
+    const base = analyticsApiUrl.replace(/\/$/, '');
+    jQuery.getJSON(base + '/stats/overview?period=day')
+        .done(function(data) {
+            jQuery('#analytics_stats_row').show();
+            let highest = 'n/a';
+            if (data.highest_alt != null) {
+                highest = Math.round(data.highest_alt).toLocaleString() + ' ft';
+            }
+            jQuery('#analytics_highest').text(highest);
+            jQuery('#analytics_military').text(data.military_aircraft != null ? data.military_aircraft : 'n/a');
+        })
+        .fail(function() {
+            jQuery('#analytics_stats_row').hide();
+        });
+}
 
+function initAnalyticsPoll() {
+    if (!analyticsEnabled || !analyticsApiUrl) {
+        return;
+    }
+    refreshAnalyticsStats();
+    setInterval(refreshAnalyticsStats, 60000);
+}
 
 parseURLIcaos();
 initialize();
+initAnalyticsPoll();
