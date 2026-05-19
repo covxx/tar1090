@@ -1,6 +1,6 @@
 [Unit]
 Description=tar1090 analytics ingest (aircraft.json to database)
-After=network.target postgresql.service tar1090-analytics-api.service
+After=network.target postgresql.service
 Wants=postgresql.service
 
 [Service]
@@ -8,7 +8,7 @@ User=tar1090
 Group=tar1090
 WorkingDirectory=/usr/local/share/tar1090/analytics/ingest
 EnvironmentFile=/etc/default/tar1090-analytics
-ExecStart=/usr/local/share/tar1090/analytics-venv/bin/python main.py
+ExecStart=/usr/bin/python3 main.py
 Restart=always
 RestartSec=15
 
