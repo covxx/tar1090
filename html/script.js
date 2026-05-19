@@ -2975,23 +2975,36 @@ function initMap() {
             jQuery(".layer-switcher .panel").css("background", "var(--BGCOLOR1)");
             jQuery(".layer-switcher .panel").css("border", "4px solid var(--BGCOLOR1)");
             if (state) {
-                root.style.setProperty("--BGCOLOR1", '#313131');
-                root.style.setProperty("--BGCOLOR2", '#242424');
-                root.style.setProperty("--TXTCOLOR1","#BFBFBF");
-                root.style.setProperty("--TXTCOLOR2","#D8D8D8");
-                root.style.setProperty("--TXTCOLOR3","#a8a8a8");
-                //invert the "x" images
+                root.style.setProperty("--BGCOLOR1", '#1a1d23');
+                root.style.setProperty("--BGCOLOR2", '#14161b');
+                root.style.setProperty("--TXTCOLOR1","#c8cdd5");
+                root.style.setProperty("--TXTCOLOR2","#e0e4ea");
+                root.style.setProperty("--TXTCOLOR3","#9aa0ab");
+                root.style.setProperty("--ACCENT", "#1ab4d0");
+                root.style.setProperty("--ACCENT-HOVER", "#22cce8");
+                root.style.setProperty("--BORDER", "rgba(255, 255, 255, 0.07)");
+                root.style.setProperty("--GLASS-BG", "rgba(26, 29, 35, 0.82)");
+                root.style.setProperty("--GLASS-BORDER", "rgba(255, 255, 255, 0.08)");
+                root.style.setProperty("--SHADOW", "0 4px 24px rgba(0, 0, 0, 0.35), 0 1px 4px rgba(0, 0, 0, 0.2)");
+                root.style.setProperty("--SHADOW-SM", "0 2px 8px rgba(0, 0, 0, 0.25)");
                 jQuery(".infoblockCloseBox").css('filter','invert(100%)');
                 jQuery(".infoblockCloseBox").css(' -webkit-filter','invert(100%)');
                 jQuery(".settingsCloseBox").css('filter','invert(100%)');
                 jQuery(".settingsCloseBox").css(' -webkit-filter','invert(100%)');
                 tableColors = tableColorsDark;
             } else {
-                root.style.setProperty("--BGCOLOR1", '#F8F8F8');
-                root.style.setProperty("--BGCOLOR2", '#CCCCCC');
-                root.style.setProperty("--TXTCOLOR1","#003f4b");
-                root.style.setProperty("--TXTCOLOR2","#050505");
-                root.style.setProperty("--TXTCOLOR3","#003f4b");
+                root.style.setProperty("--BGCOLOR1", '#f5f6f8');
+                root.style.setProperty("--BGCOLOR2", '#e2e4e9');
+                root.style.setProperty("--TXTCOLOR1","#1a3a44");
+                root.style.setProperty("--TXTCOLOR2","#1a1a1a");
+                root.style.setProperty("--TXTCOLOR3","#2a2a2a");
+                root.style.setProperty("--ACCENT", "#0d8fa9");
+                root.style.setProperty("--ACCENT-HOVER", "#0ba3c0");
+                root.style.setProperty("--BORDER", "rgba(0, 0, 0, 0.08)");
+                root.style.setProperty("--GLASS-BG", "rgba(245, 246, 248, 0.82)");
+                root.style.setProperty("--GLASS-BORDER", "rgba(255, 255, 255, 0.25)");
+                root.style.setProperty("--SHADOW", "0 4px 24px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.06)");
+                root.style.setProperty("--SHADOW-SM", "0 2px 8px rgba(0, 0, 0, 0.08)");
                 jQuery(".infoblockCloseBox").css('filter','invert(0%)');
                 jQuery(".infoblockCloseBox").css(' -webkit-filter','invert(0%)');
                 jQuery(".settingsCloseBox").css('filter','invert(0%)');
